@@ -114,7 +114,8 @@ td { padding: 5px 7px; border-bottom: 1px solid var(--border); }
   <h1>SCDS Infrasound Probe — iPhone</h1>
   <div class="info-box">
     Standalone variant for <strong>iOS Safari only</strong>. Tests exactly three fixed frequencies —
-    <strong>10, 20, 30&nbsp;Hz</strong> — each delivered at full amplitude, with laterality
+    <strong>10, 20, 30&nbsp;Hz</strong> — each delivered as an undistorted sine at the loudest level
+    that still leaves headroom for the sea sound, with laterality
     (<strong>left / right / both / anti-phase</strong>) chosen at random on every trial.
     No calibration staircases: kept deliberately simple so there's nothing subtle that could
     quietly go wrong and undermine the results. A recorded sea/surf sound loops continuously
@@ -136,12 +137,23 @@ td { padding: 5px 7px; border-bottom: 1px solid var(--border); }
     <label class="check-item"><input type="checkbox" class="safety-cb"> Auto-Lock is set to Never for this session; Do Not Disturb is on</label>
   </div>
   <div class="card">
-    <label class="field">Sea sound volume (relative to the probe, which is always full amplitude)</label>
+    <label class="field">Sea sound volume — a louder sea leaves less headroom for the probe, so the two trade off directly</label>
     <input type="range" id="cfg-seadb" min="-36" max="-6" step="1" value="-18" oninput="updateSeaLabel()">
     <div class="row" style="justify-content:space-between">
       <span class="small" id="sea-label">-18 dBFS · moderate</span>
       <button class="btn btn-secondary" id="btn-preview-sea" style="width:auto;padding:8px 14px;font-size:0.82rem" onclick="toggleSeaPreview()">🔊 Preview</button>
     </div>
+  </div>
+  <div class="card">
+    <label class="field">Probe check — plays one probe tone on its own, no sea sound, at the exact level the session will use</label>
+    <div class="row">
+      <button class="btn btn-secondary" id="btn-probe-10" style="width:auto;padding:10px 16px;font-size:0.85rem" onclick="toggleProbeCheck(10)">▶ 10 Hz</button>
+      <button class="btn btn-secondary" id="btn-probe-20" style="width:auto;padding:10px 16px;font-size:0.85rem" onclick="toggleProbeCheck(20)">▶ 20 Hz</button>
+      <button class="btn btn-secondary" id="btn-probe-30" style="width:auto;padding:10px 16px;font-size:0.85rem" onclick="toggleProbeCheck(30)">▶ 30 Hz</button>
+    </div>
+    <p class="small mt">A pure sine straight to the output — no limiter, no distortion. A/B this against a
+      known-good external tone generator to confirm the engine, your earbuds and iOS really are
+      reproducing the frequency before you commit to a session.</p>
   </div>
   <div class="card">
     <label class="field">Number of trials (freq × laterality drawn independently at random each time)</label>
@@ -181,8 +193,10 @@ td { padding: 5px 7px; border-bottom: 1px solid var(--border); }
   </div>
   <div id="report-body"></div>
   <div class="warn-box small">
-    Uncalibrated self-experimentation tool. Probe is always full digital amplitude on the selected
-    channel(s); no absolute SPL is implied. Not a diagnostic device.
+    Uncalibrated self-experimentation tool. The probe is a pure sine on the selected channel(s),
+    summed with the sea sound so that the total always stays below full scale — no limiter or
+    soft-clipper is in the path, so no harmonic distortion is added. No absolute SPL is implied.
+    Not a diagnostic device.
   </div>
 </div>
 
@@ -223,6 +237,14 @@ function mulberry32(seed) {
 }
 function el(id) { return document.getElementById(id); }
 function dbToLin(db) { return Math.pow(10, db / 20); }
+
+// Headroom budget. The probe and the sea sound are summed into the same channels, so their peaks
+// add. The probe therefore gets everything left over after the sea's peak, minus a small margin
+// for MP3-decoder and filter overshoot. Keeping the sum strictly below full scale is what allows
+// the signal path to stay perfectly linear — see the comment on buildGraph for why that matters.
+const PEAK_MARGIN = 0.02;
+function probeLinFor(seaDb) { return Math.max(0.2, 1 - dbToLin(seaDb) - PEAK_MARGIN); }
+function linToDb(lin) { return 20 * Math.log10(lin); }
 function sleepBase(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ══════════════════════════ ABORT / SLEEP (interruptible) ══════════════════════════
@@ -311,27 +333,37 @@ function createSeaAudioEl() {
   return a;
 }
 
+// The signal path is deliberately, strictly LINEAR: oscillator -> gain -> merger -> master ->
+// destination, with the sea summed in at master. There is no soft-clipper/limiter anywhere.
+//
+// An earlier version ran everything through a shared tanh waveshaper as a safety limiter, with
+// the probe at full scale. That was badly wrong on two counts, and it is why the probe did not
+// sound like a low sine at all:
+//   1. A full-scale sine through that curve comes out at 17.3% THD, with the 3rd harmonic only
+//      -15.5 dB below the fundamental. A 10 Hz probe therefore radiated a clearly audible 30 Hz
+//      tone at ~17% amplitude — i.e. the 10 Hz condition was contaminated with 30 Hz, one of the
+//      other test frequencies.
+//   2. Because the sea sound was summed in *before* that curve, the probe modulated the curve's
+//      local slope, amplitude-modulating the sea over a 23 dB range twice per probe cycle. That
+//      is an unmistakable audible warble at 20/40/60 Hz and it leaks both probe onset and side.
+// Both vanish if no nonlinearity is ever engaged, which the headroom budget above guarantees.
 async function buildGraph(seaDb) {
   AN.master = AX.createGain(); AN.master.gain.value = 1.0; AN.master.connect(AX.destination);
-  AN.limiter = AX.createWaveShaper();
-  const CS = 512; const curve = new Float32Array(CS);
-  for (let i = 0; i < CS; i++) { const x = (i * 2 / (CS - 1)) - 1; curve[i] = Math.tanh(x * 2.0) / Math.tanh(2.0); }
-  AN.limiter.curve = curve; AN.limiter.oversample = '4x'; AN.limiter.connect(AN.master);
-  AN.merger = AX.createChannelMerger(2); AN.merger.connect(AN.limiter);
+  AN.merger = AX.createChannelMerger(2); AN.merger.connect(AN.master);
 
   // ── Sea ambience: real recording, looped, hard high-passed defensively ──
-  // Connects straight into the limiter alongside the probe's merger output — Web Audio sums
-  // multiple inputs automatically, and the recording's own stereo image is preserved as-is.
+  // Sums into master alongside the probe's merger output — Web Audio sums multiple inputs
+  // automatically, and the recording's own stereo image is preserved as-is.
   const seaEl = createSeaAudioEl();
   try { await seaEl.play(); } catch (e) { console.error('Sea sound failed to play:', e); }
   const seaSrc = AX.createMediaElementSource(seaEl);
   const hp1 = AX.createBiquadFilter(); hp1.type = 'highpass'; hp1.frequency.value = SEA_HP_HZ; hp1.Q.value = 0.707;
   const hp2 = AX.createBiquadFilter(); hp2.type = 'highpass'; hp2.frequency.value = SEA_HP_HZ; hp2.Q.value = 0.707;
   const seaGain = AX.createGain(); seaGain.gain.value = dbToLin(seaDb);
-  seaSrc.connect(hp1); hp1.connect(hp2); hp2.connect(seaGain); seaGain.connect(AN.limiter);
+  seaSrc.connect(hp1); hp1.connect(hp2); hp2.connect(seaGain); seaGain.connect(AN.master);
   AN.seaEl = seaEl; AN.seaSrc = seaSrc; AN.seaGain = seaGain;
 
-  // ── PROBE oscillator with per-ear gain nodes — always full amplitude ──
+  // ── PROBE oscillator with per-ear gain nodes ──
   AN.probeOsc = AX.createOscillator(); AN.probeOsc.type = 'sine'; AN.probeOsc.frequency.value = 20;
   AN.probeGainL = AX.createGain(); AN.probeGainL.gain.value = 0;
   AN.probeGainR = AX.createGain(); AN.probeGainR.gain.value = 0;
@@ -347,13 +379,15 @@ function hannCurve(N, rising) {
 }
 const HANN_N = 64, HANN_RISE = hannCurve(HANN_N, true), HANN_FALL = hannCurve(HANN_N, false);
 
-// ear ∈ 'left' | 'right' | 'both' | 'anti' (anti = right channel phase-inverted). Always full amplitude.
+// ear ∈ 'left' | 'right' | 'both' | 'anti' (anti = right channel phase-inverted).
+// Amplitude is the headroom budget's leftover — as loud as possible while keeping probe+sea
+// strictly below full scale, so the waveform stays an undistorted sine.
 function startProbe(freq, ear) {
   if (!AX) return { tL: 0, tR: 0 };
   const now = AX.currentTime;
   SES.probeFreq = freq;
   SES.probeStartAudio = now;
-  const lin = 1.0;
+  const lin = SES.probeLin;
   const tL = (ear === 'left' || ear === 'both' || ear === 'anti') ? lin : 0;
   const tR = (ear === 'right' || ear === 'both') ? lin : (ear === 'anti' ? -lin : 0);
   AN.probeOsc.frequency.cancelScheduledValues(now);
@@ -438,6 +472,44 @@ function stopSeaPreview() {
   if (btn) { btn.textContent = '🔊 Preview'; btn.disabled = false; }
 }
 
+// ── Isolated probe check (config screen) ── plays one probe frequency alone, in its own context,
+// with nothing else in the path. Gives a direct A/B against an external tone generator.
+let probeAX = null, probeNodes = null, probeCheckFreq = null;
+async function toggleProbeCheck(freq) {
+  const wasFreq = probeCheckFreq;
+  if (probeAX) stopProbeCheck();
+  if (wasFreq === freq) return;            // tapping the one that's already playing just stops it
+  try {
+    probeAX = new (window.AudioContext || window.webkitAudioContext)();
+    if (probeAX.state === 'suspended') await probeAX.resume();
+    const lin = probeLinFor(+el('cfg-seadb').value);
+    const osc = probeAX.createOscillator(); osc.type = 'sine'; osc.frequency.value = freq;
+    const g = probeAX.createGain(); g.gain.value = 0;
+    osc.connect(g); g.connect(probeAX.destination);
+    osc.start();
+    g.gain.setTargetAtTime(lin, probeAX.currentTime, Math.max(0.05, 2 / freq));
+    probeNodes = { osc, g }; probeCheckFreq = freq;
+  } catch (err) {
+    stopProbeCheck();
+    alert('Probe check failed: ' + err.message);
+  }
+  updateProbeCheckUI();
+}
+function stopProbeCheck() {
+  if (probeNodes) {
+    const now = probeAX.currentTime;
+    probeNodes.g.gain.cancelScheduledValues(now);
+    probeNodes.g.gain.setTargetAtTime(0, now, 0.05);
+    const nodes = probeNodes, ax = probeAX;
+    setTimeout(() => { try { nodes.osc.stop(); } catch (e) {} ax.close().catch(() => {}); }, 250);
+  } else if (probeAX) { probeAX.close().catch(() => {}); }
+  probeAX = null; probeNodes = null; probeCheckFreq = null;
+  updateProbeCheckUI();
+}
+function updateProbeCheckUI() {
+  FREQS.forEach(f => { const b = el('btn-probe-' + f); if (b) b.textContent = (probeCheckFreq === f ? '⏸ ' : '▶ ') + f + ' Hz'; });
+}
+
 // ══════════════════════════ UI HELPERS ══════════════════════════
 function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); el(id).classList.add('active'); }
 function showOverlay(id) { el(id).classList.add('vis'); }
@@ -447,7 +519,7 @@ function setPhase(cls, txt) { const box = el('phase-box'); box.className = cls; 
 function updateSeaLabel() {
   const db = +el('cfg-seadb').value;
   const qual = db <= -30 ? 'very quiet' : db <= -22 ? 'quiet' : db <= -14 ? 'moderate' : 'loud';
-  el('sea-label').textContent = `${db} dBFS · ${qual}`;
+  el('sea-label').textContent = `${db} dBFS · ${qual} → probe ${linToDb(probeLinFor(db)).toFixed(1)} dBFS`;
 }
 function updateEstimate() {
   const total = +el('cfg-trials').value || 36;
@@ -544,7 +616,7 @@ async function runMainTest() {
 function resetSessionState() {
   ABORTED = false;
   abortHandlers = [];
-  SES = { seed: 0, prng: null, startWall: 0, log: [], trials: [], seaDb: -18 };
+  SES = { seed: 0, prng: null, startWall: 0, log: [], trials: [], seaDb: -18, probeLin: probeLinFor(-18) };
   statCounts = { asymptomatic: 0, full: 0, temporary: 0, none: 0, rep: 0 };
   ['stat-asymptomatic', 'stat-full', 'stat-temporary', 'stat-none', 'stat-rep'].forEach(id => { el(id).textContent = '0'; });
 }
@@ -552,11 +624,13 @@ function resetSessionState() {
 async function handleStart() {
   resetSessionState();
   el('btn-start').disabled = true; el('btn-start').textContent = 'Starting…';
-  stopSeaPreview();
+  stopSeaPreview(); stopProbeCheck();
   SES.seed = (Date.now() ^ 0x9e3779b9) >>> 0;
   SES.prng = mulberry32(SES.seed);
   SES.startWall = performance.now();
   SES.seaDb = +el('cfg-seadb').value;
+  SES.probeLin = probeLinFor(SES.seaDb);
+  logSes('levels', { seaDb: SES.seaDb, probeLin: SES.probeLin, probeDbfs: +linToDb(SES.probeLin).toFixed(2) });
   try {
     await initAudioCtx();
     await buildGraph(SES.seaDb);
@@ -680,6 +754,7 @@ function buildReport() {
   html += `</table></div>`;
 
   html += `<p class="small">Session seed: ${SES.seed.toString(16).toUpperCase()} · Sea volume: ${SES.seaDb} dBFS ·
+    Probe level: ${linToDb(SES.probeLin).toFixed(1)} dBFS (pure sine, linear path, no limiter) ·
     Trials logged: ${SES.trials.length} · Started: ${new Date(Date.now() - (performance.now() - SES.startWall)).toLocaleString()}</p>`;
 
   el('report-body').innerHTML = html;
@@ -699,7 +774,10 @@ function downloadCSV() {
   dlFile('scds_iphone_events.csv', rows.join('\n'), 'text/csv');
 }
 function downloadJSON() {
-  dlFile('scds_iphone_session.json', JSON.stringify({ seed: SES.seed, seaDb: SES.seaDb, trials: SES.trials, log: SES.log }, null, 2), 'application/json');
+  dlFile('scds_iphone_session.json', JSON.stringify({
+    seed: SES.seed, seaDb: SES.seaDb, probeLin: SES.probeLin, probeDbfs: +linToDb(SES.probeLin).toFixed(2),
+    trials: SES.trials, log: SES.log
+  }, null, 2), 'application/json');
 }
 </script>
 </body>
