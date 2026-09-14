@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>SCDS 2×2×2 — frequency × drift × side</title>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --border: #30363d; --text: #e6edf3;
+  --muted: #8b949e; --accent: #2ea043; --warn: #d29922; --danger: #f85149; --probe: #388bfd;
+  --font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body {
+  font-family: var(--font); background: var(--bg); color: var(--text);
+  min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+  padding-bottom: 50px; -webkit-user-select: none; user-select: none;
+}
+.screen { display: none; width: 100%; max-width: 520px; padding: 20px 16px; flex-direction: column; gap: 16px; }
+.screen.active { display: flex; }
+h1 { font-size: 1.3rem; font-weight: 700; }
+h2 { font-size: 1.0rem; font-weight: 600; color: var(--muted); }
+p { line-height: 1.55; font-size: 0.92rem; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.btn {
+  padding: 14px 18px; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700;
+  cursor: pointer; transition: opacity .15s; font-family: var(--font); width: 100%;
+}
+.btn:disabled { opacity: .32; cursor: not-allowed; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-secondary { background: var(--border); color: var(--text); }
+.btn:not(:disabled):active { opacity: .75; }
+.checklist { display: flex; flex-direction: column; gap: 11px; }
+.check-item { display: flex; align-items: flex-start; gap: 10px; line-height: 1.5; font-size: 0.9rem; }
+.check-item input[type=checkbox] { margin-top: 3px; width: 20px; height: 20px; accent-color: var(--accent); flex-shrink: 0; }
+label.field { font-size: 0.8rem; color: var(--muted); display: block; margin-bottom: 4px; line-height: 1.5; }
+input[type=number], select {
+  background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  padding: 8px 10px; border-radius: 6px; font-size: 1rem; width: 100%; font-family: var(--font);
+}
+input[type=range] { width: 100%; accent-color: var(--probe); height: 28px; }
+input[type=checkbox].tog { width: 20px; height: 20px; accent-color: var(--accent); }
+.warn-box { background: #1e1300; border: 1px solid var(--warn); border-radius: 8px; padding: 14px; font-size: 0.86rem; line-height: 1.6; }
+.info-box { background: #0c1a2e; border: 1px solid var(--probe); border-radius: 8px; padding: 14px; font-size: 0.86rem; line-height: 1.6; }
+.small { font-size: 0.78rem; color: var(--muted); line-height: 1.5; }
+.mono { font-family: monospace; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mt { margin-top: 8px; }
+.mt2 { margin-top: 14px; }
+hr { border: none; border-top: 1px solid var(--border); margin: 6px 0; }
+
+#btn-stop {
+  position: fixed; top: 10px; right: 10px; z-index: 1000; padding: 9px 15px;
+  background: var(--danger); color: #fff; border: none; border-radius: 8px;
+  font-size: 0.85rem; font-weight: 700; font-family: var(--font);
+}
+
+#phase-box {
+  font-size: 1.1rem; font-weight: 700; text-align: center; padding: 18px;
+  border-radius: 10px; background: var(--surface); border: 2px solid var(--border);
+  min-height: 72px; display: flex; align-items: center; justify-content: center;
+  transition: border-color .3s, color .3s;
+}
+#phase-box.ph-probe { border-color: var(--probe); color: var(--probe); }
+#phase-box.ph-wash { border-color: var(--warn); color: var(--warn); }
+#phase-box.ph-ready { border-color: var(--accent); color: var(--accent); }
+
+.wait-line { text-align: center; font-size: 0.85rem; color: var(--muted); min-height: 18px; }
+
+.resp-col { display: flex; flex-direction: column; gap: 10px; }
+.resp-btn {
+  padding: 16px 14px; font-size: 0.94rem; font-weight: 600; border: 1px solid var(--border);
+  border-left: 5px solid var(--border); background: var(--surface); color: var(--text);
+  border-radius: 8px; font-family: var(--font); text-align: left; cursor: pointer; line-height: 1.4;
+}
+.resp-btn:disabled { opacity: .3; }
+.resp-1 { border-left-color: var(--accent); }
+.resp-2 { border-left-color: var(--probe); }
+.resp-3 { border-left-color: var(--warn); }
+.resp-4 { border-left-color: var(--danger); }
+
+.ov { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 600; align-items: center; justify-content: center; }
+.ov.vis { display: flex; }
+.ov-card {
+  background: var(--surface); border: 2px solid var(--probe); border-radius: 14px;
+  padding: 22px; max-width: 420px; width: 92%; display: flex; flex-direction: column; gap: 14px;
+}
+.ov-card h3 { font-size: 1rem; color: var(--probe); }
+.ov-card p { font-size: 0.86rem; color: var(--muted); }
+.opt-col { display: flex; flex-direction: column; gap: 9px; }
+.opt-btn {
+  padding: 14px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+  font-size: 0.92rem; background: var(--bg); color: var(--text); font-family: var(--font); text-align: center;
+}
+.opt-btn:disabled { opacity: .3; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.76rem; margin-top: 6px; }
+th { background: var(--surface); padding: 6px 6px; text-align: left; border-bottom: 2px solid var(--border); font-weight: 600; }
+td { padding: 5px 6px; border-bottom: 1px solid var(--border); }
+.rpt-section { margin-bottom: 20px; }
+.rpt-section h3 { font-size: 0.92rem; color: var(--text); margin-bottom: 4px; }
+.verdict { padding: 14px; border-radius: 8px; font-size: 0.9rem; line-height: 1.55; margin-bottom: 16px; border: 2px solid; }
+.v-ok { background: #0d1f12; border-color: var(--accent); }
+.v-warn { background: #1e1300; border-color: var(--warn); }
+.v-bad { background: #2d0f0f; border-color: var(--danger); }
+.g { color: var(--accent); } .w { color: var(--warn); } .d { color: var(--danger); }
+</style>
+</head>
+<body>
+
+<button id="btn-stop" onclick="emergencyStop()">⏹ STOP</button>
+
+<!-- ═══════════════ SCREEN: INTRO ═══════════════ -->
+<div id="s-intro" class="screen active">
+  <h1>SCDS 2×2×2 — frequency × drift × side</h1>
+
+  <div class="info-box">
+    Eight conditions, fully crossed and equally sized:
+    <strong>20&nbsp;Hz vs 500&nbsp;Hz</strong> × <strong>steady vs aggressively drifting</strong> ×
+    <strong>left vs right ear</strong>, plus silent sham trials scattered through.
+    Nothing on screen ever indicates which condition a trial is — not during it, not after it.<br><br>
+    <strong>The hypothesis this is built to test:</strong> if 500&nbsp;Hz reaches the labyrinth mainly by
+    air conduction it should be strongly ear-specific, while if 20&nbsp;Hz arrives substantially by
+    bone conduction it should reach both sides regardless of which channel is driven. That predicts
+    a <em>laterality effect at 500&nbsp;Hz and none at 20&nbsp;Hz</em> — an interaction, not a main
+    effect.<br><br>
+    Two things are measured on every trial and both bear on that: your symptom rating, and your
+    <strong>guess at which ear was driven</strong>. The guess is not a nuisance check here — it is a
+    primary outcome. If you can name the side at 500&nbsp;Hz and genuinely cannot at 20&nbsp;Hz, that
+    is the bone-conduction prediction showing up directly, independent of any symptom report.<br><br>
+    Silent sham trials are scattered through and watched as the session runs, not just scored
+    afterwards: one symptomatic sham quietly schedules another silent trial within the next few
+    trials to re-check, and <strong>two symptomatic shams in a row stops the session and asks
+    whether to continue</strong> — at that point the background rate has likely risen for the whole
+    session, not just for one unlucky trial, and everything measured past it would be unreadable.
+  </div>
+
+  <div class="warn-box">
+    <strong>⚠ Read before proceeding</strong><br><br>
+    This delivers tones that may provoke oscillopsia, imbalance, nausea or vertigo. Do not proceed if
+    standing, near fall hazards, driving, or in an active severe vestibular episode.<br><br>
+    <strong>500&nbsp;Hz is fully audible and there is a documented acoustic-trauma history.</strong>
+    The 500&nbsp;Hz level is capped well below the 20&nbsp;Hz level for that reason. Set it by comfort,
+    not by chasing an effect.<br><br>
+    <strong>Stop immediately</strong> with the red STOP button on pain, sharp tinnitus increase, or
+    disabling vertigo. Do not drive for at least 30 minutes afterwards.
+  </div>
+
+  <div class="card checklist" id="safety-checks">
+    <label class="check-item"><input type="checkbox" class="safety-cb"> I am seated or reclined in a safe location</label>
+    <label class="check-item"><input type="checkbox" class="safety-cb"> I am not in an active severe vestibular episode right now</label>
+    <label class="check-item"><input type="checkbox" class="safety-cb"> Earbuds are sealed in-canal, and I have noted which is in which ear</label>
+    <label class="check-item"><input type="checkbox" class="safety-cb"> System volume is at maximum; Low Power Mode is off</label>
+    <label class="check-item"><input type="checkbox" class="safety-cb"> Auto-Lock is Never for this session; Do Not Disturb is on</label>
+  </div>
+
+  <!-- ── Levels ── -->
+  <div class="card">
+    <h2>Probe level, set separately per frequency</h2>
+    <p class="small mt">Earbuds are vastly more efficient at 500&nbsp;Hz than at 20&nbsp;Hz, so the same
+      digital level is nowhere near the same sound pressure. There is no way to fix that without a
+      calibrated microphone. What you <em>can</em> do is match them by ear, which makes the
+      cross-frequency comparison interpretable-ish and the within-frequency comparisons (drift, side)
+      exactly as clean either way.</p>
+
+    <div class="mt2">
+      <label class="field">20 Hz level</label>
+      <input type="range" id="cfg-lvl20" min="-24" max="0" step="1" value="-1" oninput="updateLevels()">
+      <div class="small" id="lbl-lvl20"></div>
+    </div>
+    <div class="mt2">
+      <label class="field">500 Hz level — capped at −12 dBFS for safety</label>
+      <input type="range" id="cfg-lvl500" min="-60" max="-12" step="1" value="-36" oninput="updateLevels()">
+      <div class="small" id="lbl-lvl500"></div>
+    </div>
+    <div class="row mt2">
+      <button class="btn btn-secondary" id="btn-match" style="width:auto;padding:10px 16px;font-size:0.85rem" onclick="toggleLoudnessMatch()">⇄ Alternate 20 / 500 Hz</button>
+      <span class="small" id="match-state">stopped</span>
+    </div>
+    <p class="small mt">Alternates the two tones, 1.5&nbsp;s each, both ears, while you drag the
+      500&nbsp;Hz slider until they feel about equally present. If 20&nbsp;Hz is below your hearing
+      threshold, match on the <em>bodily</em> sensation rather than loudness, and say so in your notes.</p>
+  </div>
+
+  <!-- ── Drift ── -->
+  <div class="card">
+    <h2>Drift depth</h2>
+    <label class="field">Proportional, so the two frequencies get the same musical interval of wander.
+      The previous session used ±15%; the default here is ±40%, which is unmistakably aggressive.</label>
+    <input type="range" id="cfg-drift" min="10" max="60" step="5" value="40" oninput="updateLevels()">
+    <div class="small" id="lbl-drift"></div>
+  </div>
+
+  <!-- ── Probe check ── -->
+  <div class="card">
+    <h2>Probe check</h2>
+    <label class="field">Plays each condition alone, at exactly the level the session will use, so you
+      can confirm the engine and the earbuds really are producing what they claim before committing.</label>
+    <div class="row mt">
+      <button class="btn btn-secondary pchk" id="pc-20-steady" style="width:auto;padding:10px 14px;font-size:0.82rem" onclick="toggleProbeCheck(20,'steady')">▶ 20 Hz steady</button>
+      <button class="btn btn-secondary pchk" id="pc-20-drift" style="width:auto;padding:10px 14px;font-size:0.82rem" onclick="toggleProbeCheck(20,'drift')">▶ 20 Hz drift</button>
+    </div>
+    <div class="row mt">
+      <button class="btn btn-secondary pchk" id="pc-500-steady" style="width:auto;padding:10px 14px;font-size:0.82rem" onclick="toggleProbeCheck(500,'steady')">▶ 500 Hz steady</button>
+      <button class="btn btn-secondary pchk" id="pc-500-drift" style="width:auto;padding:10px 14px;font-size:0.82rem" onclick="toggleProbeCheck(500,'drift')">▶ 500 Hz drift</button>
+    </div>
+  </div>
+
+  <!-- ── Ambient ── -->
+  <div class="card">
+    <h2>Sea ambient</h2>
+    <div class="row">
+      <input type="checkbox" class="tog" id="cfg-sea" onchange="updateLevels()">
+      <label class="field" style="margin:0" for="cfg-sea">Play the sea sound underneath (default off)</label>
+    </div>
+    <p class="small mt"><strong>Off by default, and the reason matters for this particular test.</strong>
+      The sea recording is high-passed at 180&nbsp;Hz, so it has real energy at 500&nbsp;Hz and none
+      anywhere near 20&nbsp;Hz. It would therefore mask one arm of the frequency comparison and not the
+      other — and worse, it would mask the arm where you expect the laterality effect to live, which is
+      the main thing this session is for. Two previous sessions showed the sea has no measurable effect
+      on outcome, so turning it on costs little; but it is not free here the way it was there.</p>
+    <div id="sea-cfg" style="display:none" class="mt2">
+      <label class="field">Sea level</label>
+      <input type="range" id="cfg-seadb" min="-40" max="-12" step="1" value="-24" oninput="updateLevels()">
+      <div class="row" style="justify-content:space-between">
+        <span class="small" id="sea-label"></span>
+        <button class="btn btn-secondary" id="btn-preview-sea" style="width:auto;padding:8px 14px;font-size:0.82rem" onclick="toggleSeaPreview()">🔊 Preview</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Length ── -->
+  <div class="card">
+    <h2>Session length</h2>
+    <label class="field">Trials per cell — there are 8 cells (2 frequencies × 2 drift × 2 sides)</label>
+    <input type="number" id="cfg-percell" value="4" min="2" max="10" step="1" oninput="updateLevels()">
+    <label class="field mt2">Seconds of listening before the rating buttons unlock</label>
+    <input type="number" id="cfg-listen" value="10" min="4" max="30" step="1" oninput="updateLevels()">
+    <p class="small mt" id="estimate-txt"></p>
+  </div>
+
+  <button class="btn btn-primary" id="btn-start" disabled onclick="handleStart()">▶ Begin</button>
+</div>
+
+<!-- ═══════════════ SCREEN: MAIN TEST ═══════════════ -->
+<div id="s-main" class="screen">
+  <h2>Trial <span id="main-trial-n">1</span> / <span id="main-trial-total">40</span></h2>
+  <div id="phase-box" class="ph-probe">Listening…</div>
+  <div class="wait-line" id="main-wait"></div>
+  <div class="resp-col" id="sev-buttons">
+    <button class="resp-btn resp-1" id="sev-1" data-val="asymptomatic">1 · Asymptomatic at rest</button>
+    <button class="resp-btn resp-2" id="sev-2" data-val="full">2 · Symptomatic, but full compensation possible</button>
+    <button class="resp-btn resp-3" id="sev-3" data-val="temporary">3 · Temporary compensation possible</button>
+    <button class="resp-btn resp-4" id="sev-4" data-val="none">4 · No compensation possible at all</button>
+  </div>
+  <button class="btn btn-primary" id="btn-baseline" style="display:none" onclick="clickBaseline()">I'm back to baseline — next trial</button>
+</div>
+
+<!-- ═══════════════ SCREEN: REPORT ═══════════════ -->
+<div id="s-report" class="screen">
+  <h1>Session report</h1>
+  <div class="row">
+    <button class="btn btn-secondary" style="width:auto;padding:10px 16px" onclick="downloadCSV()">⬇ CSV</button>
+    <button class="btn btn-secondary" style="width:auto;padding:10px 16px" onclick="downloadJSON()">⬇ JSON</button>
+    <button class="btn btn-primary" style="width:auto;padding:10px 16px" onclick="startNewSession()">↺ New session</button>
+  </div>
+  <div id="report-body"></div>
+  <div class="warn-box small">
+    Uncalibrated self-experimentation tool. The probe is a pure sine on the selected channel, summed
+    with the sea sound (if enabled) so the total stays below full scale — no limiter or soft-clipper in
+    the path, so no harmonic distortion is added. No absolute SPL is implied. Not a diagnostic device.
+  </div>
+</div>
+
+<!-- ── Ear-guess overlay ── -->
+<div id="guess-overlay" class="ov">
+  <div class="ov-card">
+    <h3>Which side was it?</h3>
+    <p>Answer now, while it's fresh — this is a primary outcome, not a formality. Guess even if you
+      are not sure; only use "can't tell" when you genuinely have nothing to go on.</p>
+    <div class="opt-col">
+      <button class="opt-btn" id="guess-left" data-val="left">Left</button>
+      <button class="opt-btn" id="guess-right" data-val="right">Right</button>
+      <button class="opt-btn" id="guess-unsure" data-val="unsure">Can't tell</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Baseline-gate overlay ── -->
+<div id="gate-overlay" class="ov">
+  <div class="ov-card">
+    <h3 id="gate-title">Before we start</h3>
+    <p id="gate-text"></p>
+    <div class="opt-col">
+      <button class="opt-btn" id="gate-go" data-val="go">Continue with the session</button>
+      <button class="opt-btn" id="gate-stop" data-val="stop">Stop — come back when settled</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ══════════════════════════ DESIGN CONSTANTS ══════════════════════════
+// Three crossed factors, two levels each, equal cell sizes. Laterality is left/right only —
+// 'both' and 'anti' are dropped so the whole trial budget goes into the comparison the session
+// exists to make. The frequency×side interaction is the target; both main effects come free.
+const FREQS  = [20, 500];
+const DRIFTS = ['steady', 'drift'];
+const EARS   = ['left', 'right'];
+
+// Drift is proportional so 20 Hz and 500 Hz get the same relative wander; an absolute depth in Hz
+// would be imperceptible at 500 and violent at 20. Note the one asymmetry this leaves: at 20 Hz the
+// downward excursions reach ~12 Hz, where earbud output may fall away, so the 20 Hz drift arm can
+// carry slightly less delivered energy than the 20 Hz steady arm. That is logged, not corrected.
+let DRIFT_DEPTH = 0.40;
+const DRIFT_SEG_MIN_S = 0.25, DRIFT_SEG_MAX_S = 0.60;
+
+// Silent trials are not optional. The desktop session measured a 24% symptomatic rate and a 17%
+// "unbearable" rate with nothing playing at all, over 90 silent trials. Without a sham arm sized
+// against that floor, no rate in the report means anything.
+const SHAM_FRACTION = 0.25;
+const BASELINE_TRIALS = 3;      // run first, as an admission gate
+
+// Adaptive sham monitoring during the main test. A single symptomatic sham could be noise; the
+// pre-built 25% schedule might not deal another one for a long stretch, so a re-check is inserted
+// nearby rather than waited for. Two symptomatic shams in a row is a different situation — it is
+// evidence the background rate has shifted for the *whole* session, not that one trial was unlucky
+// — and every rate downstream of that point becomes unreadable, so that gets an explicit stop/go
+// prompt instead of silently accumulating a session that turns out worthless only at the end.
+const SHAM_RECHECK_MIN_GAP = 2, SHAM_RECHECK_MAX_GAP = 5;   // trials after a single positive sham
+
+let MAIN_MIN_LISTEN_MS = 10000;
+const MAIN_MAX_LISTEN_MS = 45000;    // hard safety cap -> auto timeout
+
+// Washout is entirely self-paced: the probe stops, and the next trial waits on a button press.
+// The minimum only exists to stop a double-tap skipping straight through.
+const WASHOUT_MIN_MS = 2000;
+const WASHOUT_CAP_MS = 180000;       // if it has been three minutes, move on and flag the trial
+
+const SEA_HP_HZ = 180;
+const SEA_FILE = 'rmultimediaeu-ocean-waves-250310.mp3';
+const AMBIENT_XFADE_S = 0.4;
+const PEAK_MARGIN = 0.02;
+
+function mulberry32(seed) {
+  return function () {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function el(id) { return document.getElementById(id); }
+function dbToLin(db) { return Math.pow(10, db / 20); }
+function linToDb(lin) { return 20 * Math.log10(Math.max(1e-9, lin)); }
+
+// Headroom: probe and sea sum into the same channels, so their peaks add. Staying strictly below
+// full scale is what lets the signal path remain perfectly linear with no limiter anywhere.
+function headroomLin() {
+  const seaOn = el('cfg-sea').checked;
+  const seaLin = seaOn ? dbToLin(+el('cfg-seadb').value) : 0;
+  return Math.max(0.05, 1 - seaLin - PEAK_MARGIN);
+}
+// Requested level, clamped to whatever headroom is left. Drift sweeps the frequency but not the
+// amplitude, so one clamp per frequency covers the whole trial.
+function probeLinFor(freq) {
+  const want = dbToLin(freq === 500 ? +el('cfg-lvl500').value : +el('cfg-lvl20').value);
+  return Math.min(want, headroomLin());
+}
+
+// ══════════════════════════ ABORT / SLEEP ══════════════════════════
+let ABORTED = false;
+let abortHandlers = [];
+function triggerAbort() {
+  if (ABORTED) return;
+  ABORTED = true;
+  abortHandlers.slice().forEach(f => { try { f(); } catch (e) {} });
+}
+function sleep(ms) {
+  return new Promise(resolve => {
+    if (ABORTED) return resolve();
+    const t = setTimeout(finish, ms);
+    function finish() { cleanup(); resolve(); }
+    function cleanup() { clearTimeout(t); abortHandlers = abortHandlers.filter(f => f !== finish); }
+    abortHandlers.push(finish);
+  });
+}
+function checkAbort() { if (ABORTED) throw new Error('SESSION_ABORTED'); }
+
+function waitForChoice(ids, minMs = 0, waitEl = null) {
+  return new Promise(resolve => {
+    if (ABORTED) return resolve(null);
+    let settled = false;
+    function settle(val) { if (settled) return; settled = true; cleanup(); resolve(val); }
+    function onClick(e) { settle(e.currentTarget.dataset.val ?? e.currentTarget.id); }
+    ids.forEach(id => { const b = el(id); if (minMs > 0) b.disabled = true; b.addEventListener('click', onClick); });
+    let iv = null;
+    function onAbort() { settle(null); }
+    abortHandlers.push(onAbort);
+    if (minMs > 0) {
+      let remain = Math.ceil(minMs / 1000);
+      if (waitEl) waitEl.textContent = `You can respond in ${remain}s…`;
+      iv = setInterval(() => {
+        remain--;
+        if (waitEl) waitEl.textContent = remain > 0 ? `You can respond in ${remain}s…` : '';
+        if (remain <= 0) { clearInterval(iv); iv = null; ids.forEach(id => el(id).disabled = false); }
+      }, 1000);
+    }
+    function cleanup() {
+      ids.forEach(id => el(id).removeEventListener('click', onClick));
+      if (iv) clearInterval(iv);
+      if (waitEl) waitEl.textContent = '';
+      abortHandlers = abortHandlers.filter(f => f !== onAbort);
+    }
+  });
+}
+function withTimeout(promise, ms, fallback) {
+  return new Promise(resolve => {
+    let done = false;
+    const t = setTimeout(() => { if (!done) { done = true; resolve(fallback); } }, ms);
+    promise.then(v => { if (!done) { done = true; clearTimeout(t); resolve(v); } });
+  });
+}
+
+// ══════════════════════════ SESSION STATE ══════════════════════════
+let SES = {};
+function blankSession() {
+  return { seed: 0, prng: null, startWall: 0, log: [], trials: [], baseline: [],
+           seaOn: false, seaDb: -24, lvl: {}, lin: {}, driftDepth: DRIFT_DEPTH, gate: null,
+           shamHistory: [], shamRecheckCount: 0, shamAbortPrompts: 0, stoppedBySham: false };
+}
+function logSes(type, data) {
+  SES.log.push(Object.assign({ t: Math.round(performance.now() - SES.startWall), type }, data || {}));
+}
+
+// ══════════════════════════ AUDIO ENGINE ══════════════════════════
+let AX = null, AN = {};
+let curProbeGains = { tL: 0, tR: 0 };
+
+async function initAudioCtx() {
+  AX = new (window.AudioContext || window.webkitAudioContext)();
+  if (AX.state === 'suspended') await AX.resume();
+  logSes('audio_init', { sampleRate: AX.sampleRate, outputLatency: AX.outputLatency, ua: navigator.userAgent });
+}
+
+// Loaded via an <audio> element rather than fetch()+decodeAudioData: fetch() of a sibling file is
+// blocked under file://, but a media-element load is not.
+function createSeaAudioEl() {
+  const a = document.createElement('audio');
+  a.src = SEA_FILE; a.loop = true; a.preload = 'auto'; a.crossOrigin = 'anonymous';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  return a;
+}
+
+// Strictly linear path: oscillator -> per-ear gain -> merger -> master -> destination, with the sea
+// summed in at master. No waveshaper anywhere — an earlier build's tanh "safety limiter" put 17%
+// THD on the probe and amplitude-modulated the ambient at the probe frequency, which is exactly
+// how a 10 Hz probe came to radiate an audible 30 Hz tone. The headroom budget replaces it.
+async function buildGraph() {
+  AN.master = AX.createGain(); AN.master.gain.value = 1.0; AN.master.connect(AX.destination);
+  AN.merger = AX.createChannelMerger(2); AN.merger.connect(AN.master);
+
+  if (SES.seaOn) {
+    const seaEl = createSeaAudioEl();
+    try { await seaEl.play(); } catch (e) { console.error('Sea sound failed to play:', e); }
+    const seaSrc = AX.createMediaElementSource(seaEl);
+    const hp1 = AX.createBiquadFilter(); hp1.type = 'highpass'; hp1.frequency.value = SEA_HP_HZ; hp1.Q.value = 0.707;
+    const hp2 = AX.createBiquadFilter(); hp2.type = 'highpass'; hp2.frequency.value = SEA_HP_HZ; hp2.Q.value = 0.707;
+    const seaGain = AX.createGain(); seaGain.gain.value = dbToLin(SES.seaDb);
+    seaSrc.connect(hp1); hp1.connect(hp2); hp2.connect(seaGain); seaGain.connect(AN.master);
+    AN.seaEl = seaEl; AN.seaSrc = seaSrc; AN.seaGain = seaGain;
+  }
+
+  AN.probeOsc = AX.createOscillator(); AN.probeOsc.type = 'sine'; AN.probeOsc.frequency.value = 20;
+  AN.probeGainL = AX.createGain(); AN.probeGainL.gain.value = 0;
+  AN.probeGainR = AX.createGain(); AN.probeGainR.gain.value = 0;
+  AN.probeOsc.connect(AN.probeGainL); AN.probeOsc.connect(AN.probeGainR);
+  AN.probeGainL.connect(AN.merger, 0, 0); AN.probeGainR.connect(AN.merger, 0, 1);
+  AN.probeOsc.start();
+}
+
+function hannCurve(N, rising) {
+  const c = new Float32Array(N);
+  for (let i = 0; i < N; i++) c[i] = rising ? 0.5 * (1 - Math.cos(Math.PI * i / (N - 1))) : 0.5 * (1 + Math.cos(Math.PI * i / (N - 1)));
+  return c;
+}
+const HANN_N = 64, HANN_RISE = hannCurve(HANN_N, true), HANN_FALL = hannCurve(HANN_N, false);
+
+// The whole frequency walk is drawn from the seeded PRNG and scheduled on the AudioParam up front,
+// so it needs no timers during the trial and replays exactly from the session seed. Glides are
+// linear ramps, so there is never a discontinuity to click on. Both arms start at the centre
+// frequency, so trial onset sounds identical either way and cannot leak the condition.
+function scheduleDrift(centreHz, startTime, spanS, prng) {
+  const plan = [];
+  let t = startTime;
+  AN.probeOsc.frequency.setValueAtTime(centreHz, t);
+  while (t < startTime + spanS) {
+    t += DRIFT_SEG_MIN_S + prng() * (DRIFT_SEG_MAX_S - DRIFT_SEG_MIN_S);
+    const target = centreHz * (1 + (prng() * 2 - 1) * SES.driftDepth);
+    AN.probeOsc.frequency.linearRampToValueAtTime(target, t);
+    plan.push({ at: +(t - startTime).toFixed(2), hz: +target.toFixed(1) });
+  }
+  return plan;
+}
+
+function startProbe(freq, ear, drift) {
+  if (!AX) return { tL: 0, tR: 0, plan: null };
+  const now = AX.currentTime;
+  SES.probeFreq = freq;
+  SES.probeStartAudio = now;
+  const lin = SES.lin[freq];
+  const tL = ear === 'left' ? lin : 0;
+  const tR = ear === 'right' ? lin : 0;
+  AN.probeOsc.frequency.cancelScheduledValues(now);
+  let plan = null;
+  if (drift === 'drift') plan = scheduleDrift(freq, now, MAIN_MAX_LISTEN_MS / 1000 + 1, SES.prng);
+  else AN.probeOsc.frequency.setValueAtTime(freq, now);
+  // Fade over two cycles, floored at 30 ms — long enough at 20 Hz to avoid a click, short enough
+  // at 500 Hz not to waste a second of the listening window.
+  const fadeDur = Math.min(0.4, Math.max(0.03, 2 / freq));
+  AN.probeGainL.gain.cancelScheduledValues(now);
+  AN.probeGainR.gain.cancelScheduledValues(now);
+  if (tL !== 0) AN.probeGainL.gain.setValueCurveAtTime(HANN_RISE.map(v => v * tL), now, fadeDur); else AN.probeGainL.gain.setValueAtTime(0, now);
+  if (tR !== 0) AN.probeGainR.gain.setValueCurveAtTime(HANN_RISE.map(v => v * tR), now, fadeDur); else AN.probeGainR.gain.setValueAtTime(0, now);
+  return { tL, tR, plan };
+}
+
+function stopProbe(tL, tR) {
+  if (!AX) return;
+  const now = AX.currentTime, freq = SES.probeFreq || 20;
+  const fadeDur = Math.min(0.4, Math.max(0.03, 2 / freq));
+  AN.probeGainL.gain.cancelScheduledValues(now);
+  AN.probeGainR.gain.cancelScheduledValues(now);
+  const start = now + 0.005;
+  if (tL !== 0) { AN.probeGainL.gain.setValueAtTime(tL, start); AN.probeGainL.gain.setValueCurveAtTime(HANN_FALL.map(v => v * tL), start, fadeDur); }
+  else AN.probeGainL.gain.setValueAtTime(0, now);
+  if (tR !== 0) { AN.probeGainR.gain.setValueAtTime(tR, start); AN.probeGainR.gain.setValueCurveAtTime(HANN_FALL.map(v => v * tR), start, fadeDur); }
+  else AN.probeGainR.gain.setValueAtTime(0, now);
+  AN.probeGainL.gain.setValueAtTime(0, start + fadeDur + 0.02);
+  AN.probeGainR.gain.setValueAtTime(0, start + fadeDur + 0.02);
+}
+function stopProbeCur() { stopProbe(curProbeGains.tL, curProbeGains.tR); curProbeGains = { tL: 0, tR: 0 }; }
+function silenceAllNow() {
+  if (!AX) return;
+  const now = AX.currentTime;
+  [AN.probeGainL, AN.probeGainR, AN.seaGain].forEach(g => { if (!g) return; g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(0, now); });
+}
+function destroyAudio() {
+  silenceAllNow();
+  if (AN.seaEl) { try { AN.seaEl.pause(); } catch (e) {} AN.seaEl.remove(); }
+  if (AX) { AX.close().catch(() => {}); AX = null; }
+  AN = {};
+}
+
+// ══════════════════════════ CONFIG-SCREEN PREVIEWS ══════════════════════════
+let previewAX = null, previewNodes = null;
+async function toggleSeaPreview() {
+  const btn = el('btn-preview-sea');
+  if (previewAX) { stopSeaPreview(); return; }
+  btn.disabled = true; btn.textContent = '⏳…';
+  try {
+    previewAX = new (window.AudioContext || window.webkitAudioContext)();
+    if (previewAX.state === 'suspended') await previewAX.resume();
+    const seaEl = createSeaAudioEl();
+    await seaEl.play();
+    const src = previewAX.createMediaElementSource(seaEl);
+    const hp1 = previewAX.createBiquadFilter(); hp1.type = 'highpass'; hp1.frequency.value = SEA_HP_HZ;
+    const hp2 = previewAX.createBiquadFilter(); hp2.type = 'highpass'; hp2.frequency.value = SEA_HP_HZ;
+    const g = previewAX.createGain(); g.gain.value = 0;
+    src.connect(hp1); hp1.connect(hp2); hp2.connect(g); g.connect(previewAX.destination);
+    g.gain.setTargetAtTime(dbToLin(+el('cfg-seadb').value), previewAX.currentTime, 0.2);
+    previewNodes = { el: seaEl, g };
+    btn.disabled = false; btn.textContent = '⏸ Stop';
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '🔊 Preview';
+    alert('Preview failed: ' + err.message);
+    if (previewAX) { previewAX.close().catch(() => {}); previewAX = null; }
+  }
+}
+function stopSeaPreview() {
+  if (previewNodes) {
+    const now = previewAX.currentTime;
+    previewNodes.g.gain.cancelScheduledValues(now);
+    previewNodes.g.gain.setTargetAtTime(0, now, 0.15);
+    const nodes = previewNodes, ax = previewAX;
+    setTimeout(() => { try { nodes.el.pause(); } catch (e) {} nodes.el.remove(); ax?.close().catch(() => {}); }, 350);
+    previewAX = null; previewNodes = null;
+  } else if (previewAX) { previewAX.close().catch(() => {}); previewAX = null; }
+  const btn = el('btn-preview-sea');
+  if (btn) { btn.textContent = '🔊 Preview'; btn.disabled = false; }
+}
+
+// Probe check: one condition alone, own context, nothing else in the path.
+let probeAX = null, probeNodes = null, probeCheckKey = null, probeDriftTimer = null;
+async function toggleProbeCheck(freq, drift) {
+  const key = freq + '-' + drift;
+  const was = probeCheckKey;
+  if (probeAX) stopProbeCheck();
+  if (was === key) return;
+  try {
+    probeAX = new (window.AudioContext || window.webkitAudioContext)();
+    if (probeAX.state === 'suspended') await probeAX.resume();
+    const lin = probeLinFor(freq);
+    const osc = probeAX.createOscillator(); osc.type = 'sine'; osc.frequency.value = freq;
+    const g = probeAX.createGain(); g.gain.value = 0;
+    osc.connect(g); g.connect(probeAX.destination);
+    osc.start();
+    g.gain.setTargetAtTime(lin, probeAX.currentTime, Math.max(0.03, 2 / freq));
+    if (drift === 'drift') {
+      const depth = +el('cfg-drift').value / 100;
+      const rnd = mulberry32((Date.now() ^ freq) >>> 0);
+      const step = () => {
+        if (!probeAX) return;
+        const dur = DRIFT_SEG_MIN_S + rnd() * (DRIFT_SEG_MAX_S - DRIFT_SEG_MIN_S);
+        osc.frequency.linearRampToValueAtTime(freq * (1 + (rnd() * 2 - 1) * depth), probeAX.currentTime + dur);
+        probeDriftTimer = setTimeout(step, dur * 1000);
+      };
+      step();
+    }
+    probeNodes = { osc, g }; probeCheckKey = key;
+  } catch (err) {
+    stopProbeCheck();
+    alert('Probe check failed: ' + err.message);
+  }
+  updateProbeCheckUI();
+}
+function stopProbeCheck() {
+  if (probeDriftTimer) { clearTimeout(probeDriftTimer); probeDriftTimer = null; }
+  if (probeNodes) {
+    const now = probeAX.currentTime;
+    probeNodes.g.gain.cancelScheduledValues(now);
+    probeNodes.g.gain.setTargetAtTime(0, now, 0.05);
+    const nodes = probeNodes, ax = probeAX;
+    setTimeout(() => { try { nodes.osc.stop(); } catch (e) {} ax.close().catch(() => {}); }, 250);
+  } else if (probeAX) { probeAX.close().catch(() => {}); }
+  probeAX = null; probeNodes = null; probeCheckKey = null;
+  updateProbeCheckUI();
+}
+function updateProbeCheckUI() {
+  FREQS.forEach(f => DRIFTS.forEach(d => {
+    const b = el(`pc-${f}-${d}`);
+    if (b) b.textContent = (probeCheckKey === f + '-' + d ? '⏸ ' : '▶ ') + `${f} Hz ${d === 'drift' ? 'drift' : 'steady'}`;
+  }));
+}
+
+// Loudness match: alternates the two frequencies so the 500 Hz slider can be set by ear.
+let matchAX = null, matchNodes = null, matchTimer = null;
+async function toggleLoudnessMatch() {
+  if (matchAX) { stopLoudnessMatch(); return; }
+  stopProbeCheck();
+  try {
+    matchAX = new (window.AudioContext || window.webkitAudioContext)();
+    if (matchAX.state === 'suspended') await matchAX.resume();
+    const osc = matchAX.createOscillator(); osc.type = 'sine';
+    const g = matchAX.createGain(); g.gain.value = 0;
+    osc.connect(g); g.connect(matchAX.destination); osc.start();
+    matchNodes = { osc, g };
+    let which = 0;
+    const step = () => {
+      if (!matchAX) return;
+      const f = FREQS[which % 2]; which++;
+      const now = matchAX.currentTime;
+      g.gain.cancelScheduledValues(now);
+      g.gain.setTargetAtTime(0, now, 0.03);
+      // Retune during the 120 ms gap, so the change of pitch is never heard as a glide.
+      setTimeout(() => {
+        if (!matchAX) return;
+        osc.frequency.setValueAtTime(f, matchAX.currentTime);
+        g.gain.setTargetAtTime(probeLinFor(f), matchAX.currentTime, 0.03);
+      }, 120);
+      el('match-state').textContent = `playing ${f} Hz`;
+      matchTimer = setTimeout(step, 1500);
+    };
+    step();
+    el('btn-match').textContent = '⏸ Stop';
+  } catch (err) {
+    stopLoudnessMatch();
+    alert('Loudness match failed: ' + err.message);
+  }
+}
+function stopLoudnessMatch() {
+  if (matchTimer) { clearTimeout(matchTimer); matchTimer = null; }
+  if (matchNodes) {
+    const nodes = matchNodes, ax = matchAX;
+    try { nodes.g.gain.setTargetAtTime(0, ax.currentTime, 0.03); } catch (e) {}
+    setTimeout(() => { try { nodes.osc.stop(); } catch (e) {} ax.close().catch(() => {}); }, 200);
+  } else if (matchAX) { matchAX.close().catch(() => {}); }
+  matchAX = null; matchNodes = null;
+  const b = el('btn-match'); if (b) b.textContent = '⇄ Alternate 20 / 500 Hz';
+  const s = el('match-state'); if (s) s.textContent = 'stopped';
+}
+
+// ══════════════════════════ UI HELPERS ══════════════════════════
+function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); el(id).classList.add('active'); }
+function showOverlay(id) { el(id).classList.add('vis'); }
+function hideOverlay(id) { el(id).classList.remove('vis'); }
+function setPhase(cls, txt) { const box = el('phase-box'); box.className = cls; box.textContent = txt; }
+
+function updateLevels() {
+  const seaOn = el('cfg-sea').checked;
+  el('sea-cfg').style.display = seaOn ? 'block' : 'none';
+  DRIFT_DEPTH = +el('cfg-drift').value / 100;
+  const hr = headroomLin();
+  [20, 500].forEach(f => {
+    const want = +el(f === 500 ? 'cfg-lvl500' : 'cfg-lvl20').value;
+    const act = linToDb(probeLinFor(f));
+    const clamped = act < want - 0.05;
+    el('lbl-lvl' + f).innerHTML = `${want} dBFS requested → <strong>${act.toFixed(1)} dBFS actual</strong>` +
+      (clamped ? ` <span class="w">(clamped by sea headroom)</span>` : '');
+  });
+  el('lbl-drift').textContent = `±${(DRIFT_DEPTH * 100).toFixed(0)}% — 20 Hz sweeps ` +
+    `${(20 * (1 - DRIFT_DEPTH)).toFixed(1)}–${(20 * (1 + DRIFT_DEPTH)).toFixed(1)} Hz, ` +
+    `500 Hz sweeps ${Math.round(500 * (1 - DRIFT_DEPTH))}–${Math.round(500 * (1 + DRIFT_DEPTH))} Hz`;
+  if (seaOn) {
+    const db = +el('cfg-seadb').value;
+    el('sea-label').textContent = `${db} dBFS · headroom left for probe: ${linToDb(hr).toFixed(1)} dBFS`;
+  }
+  const perCell = +el('cfg-percell').value || 4;
+  const real = perCell * 8;
+  const sham = Math.max(4, Math.round(real * SHAM_FRACTION));
+  MAIN_MIN_LISTEN_MS = (+el('cfg-listen').value || 10) * 1000;
+  const perTrialS = (MAIN_MIN_LISTEN_MS / 1000) + 4 + 12;   // listen + rating + a typical self-paced washout
+  const nSide = perCell * 2;
+  const mdd = (1.96 * Math.sqrt(0.5 / nSide) * 100).toFixed(0);
+  el('estimate-txt').innerHTML =
+    `<strong>${real} real + ${sham} silent sham + ${BASELINE_TRIALS} opening baseline = ${real + sham + BASELINE_TRIALS} trials.</strong><br>` +
+    `Each frequency×side cell gets ${nSide} trials. Rough estimate ` +
+    `~${Math.round((real + sham + BASELINE_TRIALS) * perTrialS / 60)} min, but washout is self-paced so the real figure is up to you.<br><br>` +
+    `<strong>What that buys you.</strong> The <em>side-identification</em> result is essentially decided at any of ` +
+    `these lengths — it is near-deterministic when it works at all, so even a short session resolves it. The ` +
+    `<em>symptom</em> laterality result is the expensive one: at ${nSide} per side it can only resolve a difference ` +
+    `of about <strong>${mdd} points or larger</strong>. Going longer buys precision on that comparison and nothing else, ` +
+    `so if fatigue is the binding constraint, a short session still answers the main question.`;
+}
+document.querySelectorAll('.safety-cb').forEach(cb => cb.addEventListener('change', () => {
+  el('btn-start').disabled = !Array.from(document.querySelectorAll('.safety-cb')).every(c => c.checked);
+}));
+updateLevels();
+
+// ══════════════════════════ TRIAL QUEUE ══════════════════════════
+function shuffleInPlace(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(SES.prng() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+// Fully crossed with equal cell sizes rather than drawn independently per trial. An independent
+// draw leaves the cells lopsided by chance, which silently costs more power than the randomisation
+// buys — and with 8 cells it gets bad fast.
+function buildTrialQueue() {
+  const perCell = +el('cfg-percell').value || 4;
+  const q = [];
+  FREQS.forEach(freq => DRIFTS.forEach(drift => EARS.forEach(ear => {
+    for (let i = 0; i < perCell; i++) q.push({ freq, drift, ear, isSham: false });
+  })));
+  const nSham = Math.max(4, Math.round(q.length * SHAM_FRACTION));
+  for (let i = 0; i < nSham; i++) q.push({ freq: null, drift: null, ear: null, isSham: true });
+  return shuffleInPlace(q);
+}
+
+// ══════════════════════════ ONE TRIAL ══════════════════════════
+// Deliberately no on-screen hint of the condition — not the frequency, not the drift arm, not the
+// side, not even whether the trial is a sham. The phase text is byte-identical on every trial. A
+// visible condition tag was worth 77 percentage points in a previous session; it is not a small
+// effect that can be waved away by "you can scroll past it".
+async function runTrial(trial, n, total) {
+  showScreen('s-main');
+  el('main-trial-n').textContent = n;
+  el('main-trial-total').textContent = total;
+  el('btn-baseline').style.display = 'none';
+  setPhase('ph-probe', 'Listening… notice, then try to compensate, then rate below');
+  el('sev-buttons').style.visibility = 'hidden';
+
+  const t0 = performance.now();
+  let plan = null;
+  if (!trial.isSham) {
+    curProbeGains = startProbe(trial.freq, trial.ear, trial.drift);
+    plan = curProbeGains.plan;
+  }
+  logSes('probe_start', { n, isSham: trial.isSham, freq: trial.freq, ear: trial.ear, drift: trial.drift,
+                          isBaseline: !!trial.isBaseline, driftPlanPoints: plan ? plan.length : 0 });
+
+  await sleep(MAIN_MIN_LISTEN_MS); checkAbort();
+  el('sev-buttons').style.visibility = 'visible';
+  const key = await withTimeout(
+    waitForChoice(['sev-1', 'sev-2', 'sev-3', 'sev-4'], 0, el('main-wait')),
+    MAIN_MAX_LISTEN_MS - MAIN_MIN_LISTEN_MS, 'timeout');
+  checkAbort();
+  el('sev-buttons').style.visibility = 'hidden';
+  const response = key === 'timeout' ? null : key;
+  const listenMs = Math.round(performance.now() - t0);
+  logSes('response', { n, response, timeout: key === 'timeout', listenMs });
+
+  if (!trial.isSham) stopProbeCur();
+  const washStart = performance.now();
+  setPhase('ph-wash', 'Washout — probe is off. Take as long as you need.');
+
+  // The side question is asked immediately, not after a timer: waiting only forces a memory hold
+  // and makes the answer worse, and the washout is a physiological pause, not a response deadline.
+  //
+  // It is asked on EVERY trial, sham included. Asking only on real trials would mean the overlay's
+  // absence announced "that one was silent" — and at 20 Hz, which may sit below hearing threshold,
+  // a sham is otherwise genuinely confusable with a real trial. That is the one thing the sham arm
+  // exists to exploit. On a sham there is no correct answer, so the response is scored instead as a
+  // false localisation: committing to a side when nothing played.
+  const guess = await showEarGuess();
+  logSes('ear_guess', { n, isSham: trial.isSham, actualEar: trial.ear, guess });
+  checkAbort();
+
+  // Self-paced washout. No fixed duration anywhere — the next trial waits on the button.
+  await sleep(WASHOUT_MIN_MS); checkAbort();
+  setPhase('ph-ready', 'Press when you are back to your own baseline');
+  el('btn-baseline').style.display = 'block';
+  const gated = await withTimeout(waitForBaseline(), WASHOUT_CAP_MS, 'capped');
+  checkAbort();
+  el('btn-baseline').style.display = 'none';
+  const recoveryMs = Math.round(performance.now() - washStart);
+  logSes('baseline_reached', { n, recoveryMs, capped: gated === 'capped' });
+
+  return Object.assign({}, trial, {
+    n, response, earGuess: guess, timeout: key === 'timeout',
+    listenMs, recoveryMs, recoveryCapped: gated === 'capped',
+    driftPlan: plan
+  });
+}
+
+let baselineResolve = null;
+function waitForBaseline() {
+  return new Promise(resolve => {
+    if (ABORTED) return resolve('abort');
+    baselineResolve = resolve;
+    function onAbort() { if (baselineResolve) { baselineResolve = null; resolve('abort'); } }
+    abortHandlers.push(onAbort);
+  });
+}
+function clickBaseline() { if (baselineResolve) { const r = baselineResolve; baselineResolve = null; r('ok'); } }
+
+function showEarGuess() {
+  showOverlay('guess-overlay');
+  return waitForChoice(['guess-left', 'guess-right', 'guess-unsure'])
+    .then(v => { hideOverlay('guess-overlay'); return v; });
+}
+
+// ══════════════════════════ BASELINE GATE ══════════════════════════
+// A previous session returned 4/4 silent catch trials symptomatic and was worthless as a result.
+// Three silent trials up front catch that before the time is spent, and let the session be
+// abandoned cheaply rather than discovered worthless afterwards.
+async function runBaselineGate() {
+  const out = [];
+  for (let i = 0; i < BASELINE_TRIALS; i++) {
+    const t = await runTrial({ freq: null, drift: null, ear: null, isSham: true, isBaseline: true },
+                             i + 1, BASELINE_TRIALS);
+    out.push(t);
+    SES.baseline.push(t);
+  }
+  const sym = out.filter(t => t.response && t.response !== 'asymptomatic').length;
+  logSes('baseline_gate', { n: out.length, symptomatic: sym });
+  if (sym === 0) { SES.gate = 'clean'; return true; }
+  el('gate-title').textContent = sym === out.length ? 'You are symptomatic at rest right now' : 'Unsettled baseline';
+  el('gate-text').textContent =
+    `${sym} of ${out.length} opening trials were symptomatic with nothing playing. ` +
+    (sym === out.length
+      ? 'With the baseline this high the session cannot separate the probe from no probe at all — that is exactly what made a previous session unusable. Stopping now costs you nothing but the last few minutes.'
+      : 'The session is still usable, but the sham arm will have to carry the interpretation, and effects smaller than the baseline will be invisible.');
+  showOverlay('gate-overlay');
+  const go = await waitForChoice(['gate-go', 'gate-stop']);
+  hideOverlay('gate-overlay');
+  SES.gate = go === 'go' ? 'continued' : 'stopped';
+  logSes('baseline_gate_decision', { decision: SES.gate });
+  return go === 'go';
+}
+
+// Called right after a (non-baseline) sham trial completes. Returns 'stop' if the participant
+// chose to end the session here, otherwise 'continue'. Only tracks shams from the main test —
+// the opening baseline trials already have their own admission check in runBaselineGate, and
+// mixing the two would mean prompting twice for the same signal right at the start.
+async function handleShamResult(done, queue, i) {
+  const sym = SYM(done);
+  SES.shamHistory.push(sym);
+  const h = SES.shamHistory;
+  const twoInARow = sym && h.length >= 2 && h[h.length - 2];
+  logSes('sham_check', { n: done.n, symptomatic: sym, twoInARow });
+
+  if (twoInARow) {
+    SES.shamAbortPrompts++;
+    el('gate-title').textContent = 'Two silent trials in a row came back symptomatic';
+    el('gate-text').textContent =
+      'Nothing was playing on either of the last two sham trials, and both were rated symptomatic. ' +
+      'That usually means the background rate has risen for the rest of the session too, not that one ' +
+      'trial was unlucky — everything from here on will be hard to tell apart from that background. ' +
+      'Stopping now keeps everything collected so far and the report will say so plainly; continuing ' +
+      'risks a session that reads like the invalid one from a previous day.';
+    showOverlay('gate-overlay');
+    const go = await waitForChoice(['gate-go', 'gate-stop']);
+    hideOverlay('gate-overlay');
+    logSes('sham_run_decision', { decision: go === 'go' ? 'continued' : 'stopped' });
+    if (go !== 'go') { SES.stoppedBySham = true; return 'stop'; }
+  } else if (sym) {
+    // One positive sham, not (yet) two in a row: re-test soon rather than trusting the pre-built
+    // schedule to deal another one before the session ends.
+    const gap = SHAM_RECHECK_MIN_GAP + Math.floor(SES.prng() * (SHAM_RECHECK_MAX_GAP - SHAM_RECHECK_MIN_GAP + 1));
+    const at = Math.min(queue.length, i + 1 + gap);
+    queue.splice(at, 0, { freq: null, drift: null, ear: null, isSham: true, isRecheck: true });
+    SES.shamRecheckCount++;
+    logSes('sham_recheck_scheduled', { afterN: done.n, insertedAt: at, gap });
+  }
+  return 'continue';
+}
+
+async function runMainTest() {
+  if (!(await runBaselineGate())) return;
+  const queue = buildTrialQueue();
+  let i = 0;
+  while (i < queue.length) {
+    checkAbort();
+    const done = await runTrial(queue[i], i + 1, queue.length);
+    SES.trials.push(done);
+    if (done.isSham) {
+      const verdict = await handleShamResult(done, queue, i);
+      if (verdict === 'stop') break;
+    }
+    i++;
+  }
+}
+
+// ══════════════════════════ ORCHESTRATION ══════════════════════════
+function resetSessionState() {
+  ABORTED = false;
+  abortHandlers = [];
+  baselineResolve = null;
+  SES = blankSession();
+}
+
+async function handleStart() {
+  resetSessionState();
+  el('btn-start').disabled = true; el('btn-start').textContent = 'Starting…';
+  stopSeaPreview(); stopProbeCheck(); stopLoudnessMatch();
+  SES.seed = (Date.now() ^ 0x9e3779b9) >>> 0;
+  SES.prng = mulberry32(SES.seed);
+  SES.startWall = performance.now();
+  SES.seaOn = el('cfg-sea').checked;
+  SES.seaDb = +el('cfg-seadb').value;
+  SES.driftDepth = +el('cfg-drift').value / 100;
+  SES.perCell = +el('cfg-percell').value || 4;
+  SES.listenS = +el('cfg-listen').value || 10;
+  MAIN_MIN_LISTEN_MS = SES.listenS * 1000;
+  FREQS.forEach(f => { SES.lvl[f] = +el(f === 500 ? 'cfg-lvl500' : 'cfg-lvl20').value; SES.lin[f] = probeLinFor(f); });
+  logSes('config', { seaOn: SES.seaOn, seaDb: SES.seaDb, driftDepth: SES.driftDepth,
+                     perCell: SES.perCell, listenS: SES.listenS,
+                     lvl: SES.lvl, lin: SES.lin,
+                     dbfs: { 20: +linToDb(SES.lin[20]).toFixed(2), 500: +linToDb(SES.lin[500]).toFixed(2) } });
+  try {
+    await initAudioCtx();
+    await buildGraph();
+    try { if (navigator.wakeLock) await navigator.wakeLock.request('screen'); } catch (e) {}
+    await runMainTest();
+  } catch (e) {
+    if (e.message !== 'SESSION_ABORTED') console.error(e);
+  } finally {
+    finishSession();
+  }
+}
+
+function emergencyStop() { triggerAbort(); silenceAllNow(); logSes('emergency_stop', {}); }
+
+function finishSession() {
+  silenceAllNow();
+  destroyAudio();
+  buildReport();
+  showScreen('s-report');
+  el('btn-start').textContent = '▶ Begin';
+  el('btn-start').disabled = !Array.from(document.querySelectorAll('.safety-cb')).every(c => c.checked);
+}
+function startNewSession() {
+  resetSessionState();
+  el('btn-start').textContent = '▶ Begin';
+  el('btn-start').disabled = !Array.from(document.querySelectorAll('.safety-cb')).every(c => c.checked);
+  showScreen('s-intro');
+}
+
+// ══════════════════════════ STATISTICS ══════════════════════════
+function wilsonCI(k, n, z = 1.96) {
+  if (!n) return { p: null, lo: null, hi: null };
+  const p = k / n, z2 = z * z, d = 1 + z2 / n, c = p + z2 / (2 * n);
+  const a = z * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n);
+  return { p, lo: Math.max(0, (c - a) / d), hi: Math.min(1, (c + a) / d) };
+}
+// Newcombe's hybrid-score interval for a difference of two independent proportions. Behaves
+// sensibly at 0/n and n/n, where a Wald interval does not — which matters a lot at these n.
+function newcombeDiff(k1, n1, k2, n2) {
+  if (!n1 || !n2) return { d: null, lo: null, hi: null };
+  const a = wilsonCI(k1, n1), b = wilsonCI(k2, n2);
+  const d = k1 / n1 - k2 / n2;
+  const lo = d - Math.sqrt(Math.pow(k1 / n1 - a.lo, 2) + Math.pow(b.hi - k2 / n2, 2));
+  const hi = d + Math.sqrt(Math.pow(a.hi - k1 / n1, 2) + Math.pow(k2 / n2 - b.lo, 2));
+  return { d, lo: Math.max(-1, lo), hi: Math.min(1, hi) };
+}
+function lnFact(n) { let s = 0; for (let i = 2; i <= n; i++) s += Math.log(i); return s; }
+function hyperg(a, b, c, d) {
+  return Math.exp(lnFact(a + b) + lnFact(c + d) + lnFact(a + c) + lnFact(b + d)
+    - lnFact(a) - lnFact(b) - lnFact(c) - lnFact(d) - lnFact(a + b + c + d));
+}
+function fisherExact(a, b, c, d) {
+  if (a + b + c + d === 0) return null;
+  const obs = hyperg(a, b, c, d);
+  let p = 0;
+  const r1 = a + b, r2 = c + d, c1 = a + c;
+  for (let i = Math.max(0, c1 - r2); i <= Math.min(r1, c1); i++) {
+    const q = hyperg(i, r1 - i, c1 - i, r2 - c1 + i);
+    if (q <= obs * 1.0000001) p += q;
+  }
+  return Math.min(1, p);
+}
+function pct(v) { return v == null ? '—' : (v * 100).toFixed(0) + '%'; }
+function sgn(v) { return (v >= 0 ? '+' : '') + (v * 100).toFixed(0); }
+function pFmt(p) { return p == null ? '—' : p < 0.001 ? '<0.001' : p.toFixed(3); }
+function med(a) { if (!a.length) return null; const s = a.slice().sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
+
+// ══════════════════════════ REPORT ══════════════════════════
+const SYM = t => t.response && t.response !== 'asymptomatic';
+const HARD = t => t.response === 'temporary' || t.response === 'none';
+
+function buildReport() {
+  const all = SES.trials;
+  const real = all.filter(t => !t.isSham);
+  const sham = all.filter(t => t.isSham);
+  const base = SES.baseline;
+  const silent = base.concat(sham);
+  let h = '';
+
+  // ── Validity verdict ──────────────────────────────────────────────
+  const kSil = silent.filter(SYM).length;
+  const silRate = silent.length ? kSil / silent.length : null;
+  const sc = wilsonCI(kSil, silent.length);
+  let vc, vt;
+  if (!real.length) { vc = 'v-bad'; vt = 'No real trials were completed — nothing to report.'; }
+  else if (!silent.length) { vc = 'v-bad'; vt = 'No silent trials ran, so there is no floor to judge anything against.'; }
+  else if (silRate >= 0.5) {
+    vc = 'v-bad';
+    vt = `<strong>Treat this session as unusable.</strong> ${kSil} of ${silent.length} silent trials were symptomatic (${pct(silRate)}). ` +
+         `With the floor that high the probe cannot be distinguished from no probe, and every rate below is measuring your baseline.`;
+  } else if (silRate >= 0.25) {
+    vc = 'v-warn';
+    vt = `<strong>Interpret with care.</strong> ${kSil} of ${silent.length} silent trials were symptomatic (${pct(silRate)}), ` +
+         `about the 24% floor measured on the desktop session. Only effects clearly above this line mean anything.`;
+  } else {
+    vc = 'v-ok';
+    vt = `<strong>Usable session.</strong> Silent trials were symptomatic ${kSil}/${silent.length} (${pct(silRate)}), ` +
+         `below the 24% floor from the desktop session. Effects above this line are interpretable.`;
+  }
+  if (SES.gate === 'continued') vt += ` <span class="w">You chose to continue past a flagged opening baseline.</span>`;
+  h += `<div class="verdict ${vc}">${vt}</div>`;
+
+  // ── THE PRIMARY QUESTION: does laterality depend on frequency? ────
+  h += `<div class="rpt-section"><h3>1 · Laterality within each frequency — the primary question</h3>
+    <p class="small">The prediction under test: 500 Hz reaches the labyrinth by air conduction and so should be
+    ear-specific, while 20 Hz arrives substantially by bone conduction and so should not be. That is an
+    <em>interaction</em>. Each row below is a like-for-like comparison at one frequency — same level, same
+    drift mix, same session — so neither row can be distorted by the cross-frequency level problem.</p>
+    <table><tr><th>Freq</th><th>Left</th><th>Right</th><th>L−R</th><th>95% CI</th><th>Fisher p</th></tr>`;
+  const latBy = {};
+  for (const f of FREQS) {
+    const L = real.filter(t => t.freq === f && t.ear === 'left');
+    const R = real.filter(t => t.freq === f && t.ear === 'right');
+    const kl = L.filter(SYM).length, kr = R.filter(SYM).length;
+    const d = newcombeDiff(kl, L.length, kr, R.length);
+    latBy[f] = { kl, nl: L.length, kr, nr: R.length, d };
+    h += `<tr><td><strong>${f} Hz</strong></td><td>${kl}/${L.length} (${pct(L.length ? kl / L.length : null)})</td>
+      <td>${kr}/${R.length} (${pct(R.length ? kr / R.length : null)})</td>
+      <td>${d.d == null ? '—' : sgn(d.d) + ' pts'}</td>
+      <td>${d.d == null ? '—' : `${sgn(d.lo)} to ${sgn(d.hi)}`}</td>
+      <td>${pFmt(fisherExact(kl, L.length - kl, kr, R.length - kr))}</td></tr>`;
+  }
+  h += `</table>`;
+  // Difference-in-differences. Wald on the DiD is approximate at these n, so it is labelled as such.
+  const A = latBy[500], B = latBy[20];
+  if (A && B && A.nl && A.nr && B.nl && B.nr) {
+    const did = A.d.d - B.d.d;
+    const v = (p, n) => n ? p * (1 - p) / n : 0;
+    const se = Math.sqrt(v(A.kl / A.nl, A.nl) + v(A.kr / A.nr, A.nr) + v(B.kl / B.nl, B.nl) + v(B.kr / B.nr, B.nr));
+    const lo = did - 1.96 * se, hi = did + 1.96 * se;
+    const excl = lo * hi > 0;
+    h += `<p class="small mt"><strong>Interaction (500 Hz laterality − 20 Hz laterality): ${sgn(did)} pts</strong>,
+      approximate 95% CI ${sgn(lo)} to ${sgn(hi)} — <span class="${excl ? 'g' : 'w'}">${excl ? 'excludes zero' : 'includes zero'}</span>.
+      Positive means laterality is stronger at 500 Hz, which is the bone-conduction prediction.
+      This is a Wald interval on a difference of differences and is optimistic at these cell sizes; read the
+      direction and the two rows above it rather than the p-value.</p>`;
+  }
+  // Being explicit about the resolution limit, because this table is the one most likely to be
+  // over-read. With n per side, a 95% interval simply cannot exclude zero below roughly this width,
+  // so "includes zero" here is often a statement about the trial budget rather than about the ear.
+  const nSide = Math.min(latBy[20]?.nl || 0, latBy[20]?.nr || 0, latBy[500]?.nl || 0, latBy[500]?.nr || 0);
+  if (nSide) {
+    const mdd = 1.96 * Math.sqrt(0.5 / nSide);
+    h += `<p class="small mt"><strong>Resolution limit:</strong> with ${nSide} trials per side per frequency,
+      a laterality difference smaller than roughly <strong>${(mdd * 100).toFixed(0)} percentage points</strong>
+      cannot be separated from zero however real it is. Section 2 does not have this problem — side
+      identification is close to deterministic when it works at all, so it resolves the same question on a
+      fraction of the trials. <strong>If the two sections disagree, believe section 2.</strong></p>`;
+  }
+  h += `</div>`;
+
+  // ── CO-PRIMARY: can the side be identified at all? ────────────────
+  h += `<div class="rpt-section"><h3>2 · Could you name the side? — the same question, without self-report</h3>
+    <p class="small">This does not depend on any symptom judgement, so expectation cannot manufacture it.
+    If 20 Hz really arrives at both labyrinths by bone conduction, side identification should fall toward
+    chance at 20 Hz while staying high at 500 Hz.</p>
+    <table><tr><th>Freq</th><th>Committed</th><th>Can't-tell</th><th>Correct</th><th>Accuracy</th><th>95% CI</th><th>vs chance</th></tr>`;
+  for (const f of FREQS) {
+    const g = real.filter(t => t.freq === f);
+    const com = g.filter(t => t.earGuess === 'left' || t.earGuess === 'right');
+    const cor = com.filter(t => t.earGuess === t.ear).length;
+    const c = wilsonCI(cor, com.length);
+    // Two-sided exact binomial against p=0.5
+    let pb = null;
+    if (com.length) {
+      const n = com.length; let s = 0;
+      const pmf = k => Math.exp(lnFact(n) - lnFact(k) - lnFact(n - k) - n * Math.log(2));
+      const o = pmf(cor);
+      for (let k = 0; k <= n; k++) { const q = pmf(k); if (q <= o * 1.0000001) s += q; }
+      pb = Math.min(1, s);
+    }
+    h += `<tr><td><strong>${f} Hz</strong></td><td>${com.length}/${g.length}</td><td>${g.length - com.length}</td>
+      <td>${cor}/${com.length}</td><td>${pct(c.p)}</td>
+      <td>${c.p == null ? '—' : `${pct(c.lo)}–${pct(c.hi)}`}</td><td>${pFmt(pb)}</td></tr>`;
+  }
+  // Silent trials have no correct side, so they measure the opposite thing: how readily a side gets
+  // named when there is nothing to localise. That is the floor the two rows above sit on.
+  const silCom = silent.filter(t => t.earGuess === 'left' || t.earGuess === 'right');
+  h += `<tr><td>Silent</td><td>${silCom.length}/${silent.length}</td><td>${silent.length - silCom.length}</td>
+    <td colspan="3">no correct answer — ${silCom.length ? `named a side anyway on ${silCom.length} (${silent.filter(t => t.earGuess === 'left').length}L / ${silent.filter(t => t.earGuess === 'right').length}R)` : 'never named a side'}</td>
+    <td>—</td></tr>`;
+  h += `</table><p class="small mt">A high "can't-tell" count at 20 Hz is itself the result, not missing data.
+    The silent row is the control: if a side gets named there too, then naming a side is not evidence
+    of hearing one. The side question is asked on every trial including shams, so its presence never
+    reveals which kind of trial you just had.</p></div>`;
+
+  // ── Drift ─────────────────────────────────────────────────────────
+  h += `<div class="rpt-section"><h3>3 · Steady vs drifting, within each frequency</h3>
+    <p class="small">±${(SES.driftDepth * 100).toFixed(0)}% wander. Compared within a frequency, so level is identical
+    between the two rows of each pair.</p>
+    <table><tr><th>Freq</th><th>Steady</th><th>Drifting</th><th>Drift−steady</th><th>95% CI</th><th>Fisher p</th></tr>`;
+  for (const f of FREQS) {
+    const S = real.filter(t => t.freq === f && t.drift === 'steady');
+    const D = real.filter(t => t.freq === f && t.drift === 'drift');
+    const ks = S.filter(SYM).length, kd = D.filter(SYM).length;
+    const d = newcombeDiff(kd, D.length, ks, S.length);
+    h += `<tr><td><strong>${f} Hz</strong></td><td>${ks}/${S.length} (${pct(S.length ? ks / S.length : null)})</td>
+      <td>${kd}/${D.length} (${pct(D.length ? kd / D.length : null)})</td>
+      <td>${d.d == null ? '—' : sgn(d.d) + ' pts'}</td>
+      <td>${d.d == null ? '—' : `${sgn(d.lo)} to ${sgn(d.hi)}`}</td>
+      <td>${pFmt(fisherExact(kd, D.length - kd, ks, S.length - ks))}</td></tr>`;
+  }
+  const S0 = real.filter(t => t.drift === 'steady'), D0 = real.filter(t => t.drift === 'drift');
+  const ks0 = S0.filter(SYM).length, kd0 = D0.filter(SYM).length;
+  const dd = newcombeDiff(kd0, D0.length, ks0, S0.length);
+  h += `<tr><td><strong>Pooled</strong></td><td>${ks0}/${S0.length} (${pct(S0.length ? ks0 / S0.length : null)})</td>
+    <td>${kd0}/${D0.length} (${pct(D0.length ? kd0 / D0.length : null)})</td>
+    <td>${dd.d == null ? '—' : sgn(dd.d) + ' pts'}</td>
+    <td>${dd.d == null ? '—' : `${sgn(dd.lo)} to ${sgn(dd.hi)}`}</td>
+    <td>${pFmt(fisherExact(kd0, D0.length - kd0, ks0, S0.length - ks0))}</td></tr></table>
+    <p class="small mt"><strong>Before reading any p-value in this report:</strong> it contains roughly eight
+    significance tests. With that many, one landing below 0.05 is the expected outcome even when nothing is
+    going on. A single isolated p&nbsp;&lt;&nbsp;0.05 in a sub-row here — particularly one that contradicts
+    the pooled row directly beneath it — is much more likely to be noise than a finding. The two results this
+    session was designed around are section 1 and section 2; everything else is exploratory.</p></div>`;
+
+  // ── Frequency main effect, with the caveat attached ───────────────
+  h += `<div class="rpt-section"><h3>4 · 20 Hz vs 500 Hz — read this one last</h3>
+    <table><tr><th>Freq</th><th>n</th><th>Symptomatic</th><th>95% CI</th><th>Level used</th></tr>`;
+  for (const f of FREQS) {
+    const r = real.filter(t => t.freq === f);
+    const k = r.filter(SYM).length, c = wilsonCI(k, r.length);
+    h += `<tr><td><strong>${f} Hz</strong></td><td>${r.length}</td><td>${k}/${r.length} (${pct(c.p)})</td>
+      <td>${c.p == null ? '—' : `${pct(c.lo)}–${pct(c.hi)}`}</td>
+      <td>${SES.lin[f] != null ? linToDb(SES.lin[f]).toFixed(1) + ' dBFS' : '—'}</td></tr>`;
+  }
+  h += `<tr><td>Silent</td><td>${silent.length}</td><td>${kSil}/${silent.length} (${pct(sc.p)})</td>
+    <td>${sc.p == null ? '—' : `${pct(sc.lo)}–${pct(sc.hi)}`}</td><td>—</td></tr></table>
+    <p class="small mt"><strong>This row comparison is level-confounded and cannot be fixed here.</strong>
+    Earbuds put out far more sound pressure at 500 Hz than at 20 Hz for the same digital level, and the two
+    were set by ear rather than by a microphone. A difference between these two rows could be the frequency
+    or could be the level. Everything in sections 1–3 compares <em>within</em> a frequency and is immune to this.</p></div>`;
+
+  // ── The full 2×2×2 ────────────────────────────────────────────────
+  h += `<div class="rpt-section"><h3>5 · All eight cells</h3><table>
+    <tr><th>Freq</th><th>Drift</th><th>Side</th><th>n</th><th>Sympt.</th><th>Uncomp.</th><th>Median recovery</th></tr>`;
+  for (const f of FREQS) for (const d of DRIFTS) for (const e of EARS) {
+    const r = real.filter(t => t.freq === f && t.drift === d && t.ear === e);
+    const rec = med(r.filter(t => !t.recoveryCapped).map(t => t.recoveryMs));
+    h += `<tr><td>${f} Hz</td><td>${d === 'drift' ? 'drifting' : 'steady'}</td><td>${e}</td><td>${r.length}</td>
+      <td>${r.filter(SYM).length}/${r.length}</td><td>${r.filter(HARD).length}/${r.length}</td>
+      <td>${rec == null ? '—' : (rec / 1000).toFixed(0) + ' s'}</td></tr>`;
+  }
+  h += `</table></div>`;
+
+  // ── Silent trials in detail ───────────────────────────────────────
+  h += `<div class="rpt-section"><h3>6 · Silent trials</h3><table>
+    <tr><th>Group</th><th>n</th><th>Symptomatic</th><th>Uncompensable</th><th>Rate</th></tr>`;
+  for (const [nm, r] of [['Opening baseline', base], ['Interspersed sham', sham], ['All silent', silent]]) {
+    h += `<tr><td>${nm}</td><td>${r.length}</td><td>${r.filter(SYM).length}</td>
+      <td>${r.filter(HARD).length}</td><td>${pct(r.length ? r.filter(SYM).length / r.length : null)}</td></tr>`;
+  }
+  h += `</table><p class="small mt">Every rate elsewhere in this report should be read against the "all silent" line.
+    ${SES.shamRecheckCount ? `${SES.shamRecheckCount} extra sham${SES.shamRecheckCount === 1 ? '' : 's'} inserted mid-session after a single symptomatic sham, to re-check sooner than the pre-built schedule would have. ` : ''}
+    ${SES.shamAbortPrompts ? `${SES.shamAbortPrompts} prompt${SES.shamAbortPrompts === 1 ? '' : 's'} shown for two symptomatic shams in a row` +
+      (SES.stoppedBySham ? ', and the session was <strong>stopped early</strong> at that point — everything below reflects only the trials completed before then.' : ', and you chose to continue each time.') : ''}
+  </p></div>`;
+
+  // ── Recovery ──────────────────────────────────────────────────────
+  h += `<div class="rpt-section"><h3>7 · Self-paced recovery time</h3><table>
+    <tr><th>Group</th><th>n</th><th>Median</th><th>Max</th></tr>`;
+  const recRows = [['20 Hz', real.filter(t => t.freq === 20)], ['500 Hz', real.filter(t => t.freq === 500)],
+                   ['Steady', S0], ['Drifting', D0], ['Silent', silent],
+                   ['Asymptomatic', all.filter(t => t.response === 'asymptomatic')],
+                   ['Uncompensable', all.filter(HARD)]];
+  for (const [nm, r] of recRows) {
+    const v = r.filter(t => !t.recoveryCapped).map(t => t.recoveryMs);
+    h += `<tr><td>${nm}</td><td>${v.length}</td><td>${med(v) == null ? '—' : (med(v) / 1000).toFixed(0) + ' s'}</td>
+      <td>${v.length ? (Math.max(...v) / 1000).toFixed(0) + ' s' : '—'}</td></tr>`;
+  }
+  h += `</table><p class="small mt">Washout was never timed by the tool, so these are your own settling times and
+    are a genuine outcome measure rather than a fixed pause.</p></div>`;
+
+  // ── Session drift ─────────────────────────────────────────────────
+  h += `<div class="rpt-section"><h3>8 · Drift across the session</h3><table>
+    <tr><th>Third</th><th>n</th><th>Symptomatic</th><th>20/500 split</th><th>Median recovery</th></tr>`;
+  const third = Math.ceil(real.length / 3) || 1;
+  for (let i = 0; i < 3; i++) {
+    const r = real.slice(i * third, (i + 1) * third);
+    if (!r.length) continue;
+    const v = r.filter(t => !t.recoveryCapped).map(t => t.recoveryMs);
+    h += `<tr><td>${['First', 'Middle', 'Last'][i]}</td><td>${r.length}</td>
+      <td>${r.filter(SYM).length}/${r.length}</td>
+      <td>${r.filter(t => t.freq === 20).length} / ${r.filter(t => t.freq === 500).length}</td>
+      <td>${med(v) == null ? '—' : (med(v) / 1000).toFixed(0) + ' s'}</td></tr>`;
+  }
+  h += `</table><p class="small mt">Cells are balanced by construction, so a large gap here is fatigue or
+    sensitisation rather than the stimulus — and it is the thing most likely to masquerade as a real effect.</p></div>`;
+
+  h += `<p class="small">Seed ${SES.seed.toString(16).toUpperCase()} ·
+    20 Hz at ${SES.lin[20] != null ? linToDb(SES.lin[20]).toFixed(1) : '—'} dBFS,
+    500 Hz at ${SES.lin[500] != null ? linToDb(SES.lin[500]).toFixed(1) : '—'} dBFS ·
+    drift ±${(SES.driftDepth * 100).toFixed(0)}% in ${DRIFT_SEG_MIN_S}–${DRIFT_SEG_MAX_S}s glides ·
+    sea ${SES.seaOn ? SES.seaDb + ' dBFS' : 'off'} ·
+    ${SES.listenS}s listening gate, self-paced washout ·
+    ${real.length} real + ${silent.length} silent ·
+    ${new Date(Date.now() - (performance.now() - SES.startWall)).toLocaleString()}</p>`;
+
+  el('report-body').innerHTML = h;
+}
+
+// ══════════════════════════ EXPORT ══════════════════════════
+function dlFile(name, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+function downloadCSV() {
+  const cols = ['n', 'isBaseline', 'isSham', 'isRecheck', 'freq', 'drift', 'ear', 'response', 'earGuess',
+                'listenMs', 'recoveryMs', 'recoveryCapped', 'timeout'];
+  const rows = [cols.join(',')];
+  SES.baseline.concat(SES.trials).forEach(t => {
+    rows.push(cols.map(c => `"${t[c] ?? (['isBaseline', 'isSham', 'isRecheck'].includes(c) ? false : '')}"`).join(','));
+  });
+  dlFile('scds_2x2x2_trials.csv', rows.join('\n'), 'text/csv');
+}
+function downloadJSON() {
+  dlFile('scds_2x2x2_session.json', JSON.stringify({
+    seed: SES.seed, design: { freqs: FREQS, drifts: DRIFTS, ears: EARS, perCell: SES.perCell,
+                              shamFraction: SHAM_FRACTION, baselineTrials: BASELINE_TRIALS },
+    levels: { requested: SES.lvl, linear: SES.lin,
+              dbfs: { 20: +linToDb(SES.lin[20] || 1e-9).toFixed(2), 500: +linToDb(SES.lin[500] || 1e-9).toFixed(2) } },
+    driftDepth: SES.driftDepth, driftSegS: [DRIFT_SEG_MIN_S, DRIFT_SEG_MAX_S],
+    sea: { on: SES.seaOn, db: SES.seaDb, hpHz: SEA_HP_HZ },
+    listenS: SES.listenS, gate: SES.gate,
+    shamMonitoring: { history: SES.shamHistory, recheckCount: SES.shamRecheckCount,
+                      abortPrompts: SES.shamAbortPrompts, stoppedBySham: SES.stoppedBySham },
+    baseline: SES.baseline, trials: SES.trials, log: SES.log
+  }, null, 2), 'application/json');
+}
+</script>
+</body>
+</html>

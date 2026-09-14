@@ -80,11 +80,13 @@ hr { border: none; border-top: 1px solid var(--border); margin: 6px 0; }
 .stats-row { display: flex; gap: 14px; font-size: 0.78rem; color: var(--muted); flex-wrap: wrap; justify-content: center; }
 .stat-val { color: var(--text); font-weight: 700; }
 
-#guess-overlay {
+#guess-overlay, #baseline-overlay {
   display: none; position: fixed; inset: 0; background: rgba(0,0,0,.9); z-index: 600;
   align-items: center; justify-content: center;
 }
-#guess-overlay.vis { display: flex; }
+#guess-overlay.vis, #baseline-overlay.vis { display: flex; }
+#baseline-overlay .ov-card { border-color: var(--warn); }
+#baseline-overlay .ov-card h3 { color: var(--warn); }
 .ov-card {
   background: var(--surface); border: 2px solid var(--probe); border-radius: 14px;
   padding: 22px; max-width: 420px; width: 92%; display: flex; flex-direction: column; gap: 14px;
@@ -121,9 +123,13 @@ td { padding: 5px 7px; border-bottom: 1px solid var(--border); }
     "can't fully compensate" and that ear's next tone gets <strong>quieter</strong>; answer anything
     else and it gets <strong>louder</strong>. Each ear converges on its own 50% point, and the
     difference between the two is a direct, numeric lateralisation measure in dB.<br><br>
-    A few <strong>silent catch trials</strong> are mixed in with no probe at all. They cost nothing and
-    they're what lets the report state a false-positive rate — without them, "I felt something" has no
-    baseline to be compared against.
+    The session opens with <strong>three silent trials</strong> and will tell you if it
+    shouldn't proceed. If symptoms are already present with nothing playing, a staircase can only track
+    that background — so it's better to find out in the first minute than after the whole session. More
+    silent trials are mixed in blind later to check the baseline hasn't drifted.<br><br>
+    The washout between trials is <strong>self-paced</strong>: you decide when you're back to baseline,
+    and the next probe won't start until you say so. How long that takes is recorded, since recovery
+    time is worth having and a fixed timer was throwing it away.
   </div>
   <div class="warn-box">
     <strong>⚠ Read before proceeding</strong><br><br>
@@ -172,11 +178,11 @@ td { padding: 5px 7px; border-bottom: 1px solid var(--border); }
     </select>
   </div>
   <div class="card">
-    <label class="field">Reversals to collect per ear — the staircase stops early once it has this many direction changes. More reversals means a tighter threshold but a longer session.</label>
+    <label class="field">Reversals to collect per ear. Simulated against a known threshold, 6 reversals costs ~3 fewer trials per ear than 8 and only widens the estimate from 1.6 to 1.7&nbsp;dB — so 6 is the default now that session length is the binding constraint, not precision.</label>
     <select id="cfg-reversals" onchange="updateEstimate()">
-      <option value="6">6 reversals (fastest, roughly ±3 dB)</option>
-      <option value="8" selected>8 reversals (recommended)</option>
-      <option value="10">10 reversals (tightest, longest)</option>
+      <option value="6" selected>6 reversals (recommended — ~11 trials/ear)</option>
+      <option value="8">8 reversals (~14 trials/ear)</option>
+      <option value="10">10 reversals (tightest, ~17 trials/ear)</option>
     </select>
   </div>
   <div class="card">
@@ -197,6 +203,7 @@ td { padding: 5px 7px; border-bottom: 1px solid var(--border); }
     <button class="resp-btn resp-2" id="sev-2" data-val="full">2 · Symptom, but I can fully compensate</button>
     <button class="resp-btn resp-3" id="sev-3" data-val="cannot">3 · Cannot fully compensate</button>
   </div>
+  <button class="btn btn-primary" id="wash-btn" style="display:none">I'm back to baseline — next trial</button>
   <div class="stats-row">
     <span>Left reversals <span class="stat-val" id="stat-revL">0</span></span>
     <span>Right reversals <span class="stat-val" id="stat-revR">0</span></span>
@@ -218,6 +225,18 @@ td { padding: 5px 7px; border-bottom: 1px solid var(--border); }
     summed with the sea sound so that the total always stays below full scale — no limiter or
     soft-clipper is in the path, so no harmonic distortion is added. No absolute SPL is implied.
     Not a diagnostic device.
+  </div>
+</div>
+
+<!-- ── Baseline-gate overlay: shown after the silent warm-up trials if any came back symptomatic ── -->
+<div id="baseline-overlay">
+  <div class="ov-card">
+    <h3 id="baseline-title">Baseline check</h3>
+    <p id="baseline-text"></p>
+    <div class="opt-col">
+      <button class="opt-btn" id="baseline-stop" data-val="stop">Stop here — come back rested</button>
+      <button class="opt-btn" id="baseline-go" data-val="go">Continue anyway (flagged in the report)</button>
+    </div>
   </div>
 </div>
 
@@ -250,14 +269,23 @@ const STAIR_START_DB = -18;
 const STAIR_MIN_DB = -42, STAIR_MAX_DB = 0;
 const STAIR_STEP_COARSE = 6, STAIR_STEP_FINE = 3;  // fine step takes over after the 2nd reversal
 const STAIR_APPROACH_BOOST = 1.5;   // bigger up-steps while still walking up to the first reversal
-const STAIR_MAX_TRIALS = 18;        // per-ear hard cap, in case it never settles
+const STAIR_MAX_TRIALS = 15;        // per-ear hard cap, in case it never settles
 const THRESHOLD_FROM_LAST = 4;      // average this many final reversals for the threshold estimate
 const CATCH_TRIALS = 4;             // silent probes, randomly interspersed, to measure false positives
 
+// Silent trials run BEFORE the staircase starts, as an admission gate. A session where symptoms
+// are already present with nothing playing cannot measure a threshold — the staircase just tracks
+// the background. That happened for real (4/4 silent trials symptomatic, zero "nothing at all" in
+// 33 trials), and it was only detectable after the fact, having already spent the session.
+const BASELINE_TRIALS = 3;
+
 const MAIN_MAX_LISTEN_MS = 45000;   // hard safety cap -> auto timeout
-// Shortened from 6-10s: oscillation was reported to stop immediately at probe offset every time,
-// so the long washout was pure dead time — it was eating ~7 of 21 minutes per session.
-const WASHOUT_MIN_MS = 3000, WASHOUT_MAX_MS = 2000;
+// Self-paced rather than a fixed timer. A fixed 3-5s washout was tried and was too fast to let
+// symptoms settle once any fatigue had accumulated, which contaminates the next trial's baseline.
+// The participant now decides when they are back to baseline; the minimum stops it being rushed
+// through reflexively and the cap stops a bad trial from stalling the session. The time taken is
+// logged, because recovery time is a free measure that a fixed timer was actively throwing away.
+const WASHOUT_MIN_MS = 3000, WASHOUT_CAP_MS = 45000;
 const SEA_HP_HZ = 180;                 // hard floor for ambient content, well clear of the 10-30Hz probe band
 const SEA_FILE = 'rmultimediaeu-ocean-waves-250310.mp3';   // must sit next to this HTML file
 
@@ -557,15 +585,17 @@ function updateSeaLabel() {
 }
 function gateMs() { return (+el('cfg-gate').value || 6) * 1000; }
 function updateEstimate() {
-  const rev = +el('cfg-reversals').value || 8;
+  const rev = +el('cfg-reversals').value || 6;
   // A 1-up/1-down staircase typically needs roughly 1.6 trials per reversal once it is tracking,
   // plus ~3 trials of initial walk-up. Rough but close enough to set expectations.
   const perEar = Math.round(3 + rev * 1.6);
-  const nTrials = Math.min(perEar, STAIR_MAX_TRIALS) * STAIR_EARS.length + CATCH_TRIALS;
-  const perTrialS = 0.3 + gateMs() / 1000 + 2.5 + (WASHOUT_MIN_MS + WASHOUT_MAX_MS / 2) / 1000;
-  el('estimate-txt').textContent = `~${nTrials} trials (~${perEar}/ear + ${CATCH_TRIALS} catch) at ` +
-    `${el('cfg-freq').value} Hz · ~${Math.round(perTrialS)}s each · ` +
-    `~${Math.max(1, Math.round(nTrials * perTrialS / 60))} min total`;
+  const nTrials = Math.min(perEar, STAIR_MAX_TRIALS) * STAIR_EARS.length + CATCH_TRIALS + BASELINE_TRIALS;
+  // The washout is self-paced now, so the total is a floor rather than an estimate: assume the
+  // minimum settling time and say so, instead of quoting a number the session can't honour.
+  const perTrialS = 0.3 + gateMs() / 1000 + 2.5 + WASHOUT_MIN_MS / 1000;
+  el('estimate-txt').textContent = `~${nTrials} trials (~${perEar}/ear + ${CATCH_TRIALS} blind catch + ` +
+    `${BASELINE_TRIALS} opening baseline) at ${el('cfg-freq').value} Hz · ` +
+    `at least ~${Math.max(1, Math.round(nTrials * perTrialS / 60))} min, longer if you need more settling time`;
 }
 document.querySelectorAll('.safety-cb').forEach(cb => cb.addEventListener('change', () => {
   el('btn-start').disabled = !Array.from(document.querySelectorAll('.safety-cb')).every(c => c.checked);
@@ -625,10 +655,15 @@ function bumpStats(stairs, nCatch) {
 async function runStairTrial(trial, n) {
   showScreen('s-main');
   el('main-trial-n').textContent = n;
-  // No on-screen hint of ear, level, or whether this is a catch trial — the whole point of the
-  // catch trials is that they must be indistinguishable from a very quiet real one.
-  setPhase('ph-probe', 'Listening… try to compensate if needed, then answer below');
+  // No on-screen hint of ear, level, or whether this is an interspersed catch trial — the whole
+  // point of those is that they must be indistinguishable from a very quiet real one. The opening
+  // baseline trials are the one exception: they are announced, because their job is to establish
+  // whether symptoms are already present, not to be guessed at.
+  setPhase('ph-probe', trial.isBaseline
+    ? 'Baseline check — nothing but the sea sound is playing'
+    : 'Listening… try to compensate if needed, then answer below');
   el('sev-buttons').style.visibility = 'hidden';
+  el('wash-btn').style.display = 'none';
   curProbeGains = startProbe(trial.freq, trial.ear, trial.levelDb);
   logSes('trial_probe_start', { n, freq: trial.freq, ear: trial.ear, levelDb: trial.levelDb, isCatch: trial.isCatch });
 
@@ -643,15 +678,79 @@ async function runStairTrial(trial, n) {
 
   stopProbeCur();
   setPhase('ph-wash', 'Washout — sea sound only, probe is off');
-  const washMs = WASHOUT_MIN_MS + SES.prng() * WASHOUT_MAX_MS;
-  // Asked immediately, in parallel with the washout timer, so the side doesn't have to be held
-  // in memory and the washout costs no extra wall-clock time.
-  const guessPromise = showEarGuess().then(g => { logSes('trial_earguess', { n, actualEar: trial.ear, guess: g }); return g; });
-  await sleep(washMs); checkAbort();
-  const guess = await guessPromise;
+  const washStart = performance.now();
+  // Asked immediately, so the side doesn't have to be held in memory while waiting out the washout.
+  const guess = await showEarGuess();
+  logSes('trial_earguess', { n, actualEar: trial.ear, guess });
   checkAbort();
+  // Then the washout is handed over to the participant: no fixed timer, so the next probe can't
+  // start before symptoms have actually settled.
+  const recoveryMs = await waitForBaseline(washStart);
+  checkAbort();
+  logSes('trial_recovered', { n, recoveryMs: Math.round(recoveryMs) });
 
-  return Object.assign({}, trial, { n, response, earGuess: guess, timeout: respKey === 'timeout' });
+  return Object.assign({}, trial, { n, response, earGuess: guess, recoveryMs: Math.round(recoveryMs),
+                                    timeout: respKey === 'timeout' });
+}
+
+// Holds the washout open until the participant says they are back to baseline. The button only
+// unlocks after WASHOUT_MIN_MS so it can't be tapped reflexively on the way past, and the whole
+// thing auto-advances at WASHOUT_CAP_MS so one bad trial can't stall the session indefinitely.
+function waitForBaseline(washStart) {
+  const btn = el('wash-btn'), line = el('main-wait');
+  btn.style.display = 'block';
+  return new Promise(resolve => {
+    let ticker = null, cap = null;
+    const finish = () => {
+      clearInterval(ticker); clearTimeout(cap);
+      btn.onclick = null; btn.style.display = 'none'; btn.disabled = false; line.textContent = '';
+      abortHandlers = abortHandlers.filter(f => f !== onAbort);
+      resolve(performance.now() - washStart);
+    };
+    const onAbort = () => finish();
+    abortHandlers.push(onAbort);
+    btn.disabled = true;
+    btn.onclick = () => { if (!btn.disabled) finish(); };
+    ticker = setInterval(() => {
+      const left = WASHOUT_MIN_MS - (performance.now() - washStart);
+      if (left > 0) { line.textContent = `Settling… ${Math.ceil(left / 1000)}s`; btn.disabled = true; }
+      else { line.textContent = 'Take as long as you need.'; btn.disabled = false; clearInterval(ticker); }
+    }, 200);
+    cap = setTimeout(finish, WASHOUT_CAP_MS);
+  });
+}
+
+// Silent warm-up trials, then a hard look at whether a threshold is measurable at all right now.
+// Returns false if the session should not proceed.
+async function runBaselineGate(freq) {
+  const results = [];
+  for (let i = 0; i < BASELINE_TRIALS; i++) {
+    checkAbort();
+    const done = await runStairTrial({ freq, ear: STAIR_EARS[i % STAIR_EARS.length], levelDb: null,
+                                       isCatch: true, isBaseline: true }, results.length + 1);
+    results.push(done);
+    SES.trials.push(done);
+  }
+  const sympt = results.filter(t => t.response && t.response !== 'asymptomatic').length;
+  const cannot = results.filter(t => t.response === 'cannot').length;
+  SES.baseline = { n: results.length, sympt, cannot };
+  logSes('baseline_gate', SES.baseline);
+  if (sympt === 0) return true;
+
+  el('baseline-title').textContent = cannot > 0 ? 'Not measurable right now' : 'Baseline is not clean';
+  el('baseline-text').innerHTML =
+    `You reported a symptom on <strong>${sympt} of ${results.length}</strong> trials that had ` +
+    `<strong>no probe playing at all</strong>` +
+    (cannot > 0 ? `, and on ${cannot} of them compensation was not possible.` : '.') +
+    `<br><br>A threshold measured from here would be tracking that background rather than the probe — ` +
+    `which is exactly what happened on 14 Sep, where every silent trial came back symptomatic and the ` +
+    `session produced no usable threshold. Resting is more productive than pushing through.`;
+  showOverlay('baseline-overlay');
+  const choice = await waitForChoice(['baseline-stop', 'baseline-go']);
+  hideOverlay('baseline-overlay');
+  logSes('baseline_decision', { choice });
+  SES.baseline.overridden = choice === 'baseline-go';
+  return choice === 'baseline-go';
 }
 
 function showEarGuess() {
@@ -663,8 +762,11 @@ async function runMainTest() {
   const freq = +el('cfg-freq').value || 20;
   const stairs = STAIR_EARS.map(newStair);
   SES.stairs = stairs;
-  let catchLeft = CATCH_TRIALS, n = 1;
-  bumpStats(stairs, 0);
+
+  if (!await runBaselineGate(freq)) { logSes('session_stopped_at_gate', {}); return; }
+
+  let catchLeft = CATCH_TRIALS, n = SES.trials.length + 1;
+  bumpStats(stairs, SES.trials.filter(t => t.isCatch).length);
 
   while (true) {
     checkAbort();
@@ -703,7 +805,7 @@ async function runMainTest() {
       done.reversalsAfter = stair.reversals.length;
     }
     SES.trials.push(done);
-    bumpStats(stairs, CATCH_TRIALS - catchLeft);
+    bumpStats(stairs, SES.trials.filter(t => t.isCatch).length);
   }
 }
 
@@ -717,9 +819,11 @@ async function runMainTest() {
 function resetSessionState() {
   ABORTED = false;
   abortHandlers = [];
-  SES = { seed: 0, prng: null, startWall: 0, log: [], trials: [], stairs: [],
-          seaDb: -18, probeLin: probeLinFor(-18), targetReversals: 8 };
+  SES = { seed: 0, prng: null, startWall: 0, log: [], trials: [], stairs: [], baseline: null,
+          seaDb: -18, probeLin: probeLinFor(-18), targetReversals: 6 };
   ['stat-revL', 'stat-revR', 'stat-catch'].forEach(id => { el(id).textContent = '0'; });
+  el('wash-btn').style.display = 'none';
+  hideOverlay('baseline-overlay'); hideOverlay('guess-overlay');
 }
 
 async function handleStart() {
@@ -731,7 +835,7 @@ async function handleStart() {
   SES.startWall = performance.now();
   SES.seaDb = +el('cfg-seadb').value;
   SES.probeLin = probeLinFor(SES.seaDb);
-  SES.targetReversals = +el('cfg-reversals').value || 8;
+  SES.targetReversals = +el('cfg-reversals').value || 6;
   SES.gateMs = gateMs();
   logSes('levels', { seaDb: SES.seaDb, probeLin: SES.probeLin, probeDbfs: +linToDb(SES.probeLin).toFixed(2),
                      freq: +el('cfg-freq').value, targetReversals: SES.targetReversals, gateMs: SES.gateMs,
@@ -832,6 +936,43 @@ function buildReport() {
   const stairs = SES.stairs || [];
   const real = SES.trials.filter(t => !t.isCatch);
   const catches = SES.trials.filter(t => t.isCatch);
+  const baseline = catches.filter(t => t.isBaseline);
+
+  // ── Validity verdict, first thing and unmissable. A threshold sitting on top of a symptomatic
+  // background is not a threshold, and the number is seductive enough that burying this caveat
+  // at the bottom of the report would be actively misleading.
+  const cSym = catches.filter(t => t.response && t.response !== 'asymptomatic').length;
+  const cFail = catches.filter(t => t.response === 'cannot').length;
+  const cRate = catches.length ? cSym / catches.length : null;
+  if (catches.length) {
+    const bad = cFail > 0 || (cRate != null && cRate >= 0.5);
+    const iffy = !bad && cSym > 0;
+    const colour = bad ? 'var(--danger)' : iffy ? 'var(--warn)' : 'var(--accent)';
+    const bg = bad ? '#2d0f0d' : iffy ? '#1e1300' : '#0d1f12';
+    html += `<div style="background:${bg};border:1px solid ${colour};border-left:5px solid ${colour};
+      border-radius:8px;padding:14px;margin-bottom:18px;font-size:0.88rem;line-height:1.6">
+      <strong style="color:${colour}">${bad ? '✗ Thresholds below are probably not valid'
+        : iffy ? '⚠ Read the thresholds below with caution' : '✓ Baseline was clean'}</strong><br><br>
+      Of ${catches.length} silent trials (no probe at all), ${cSym} were reported symptomatic` +
+      (cFail ? ` and ${cFail} as uncompensable` : '') + `.`;
+    if (bad) {
+      html += ` When compensation fails with nothing playing, the staircase is tracking your
+        background state rather than the stimulus, and the level it converges on says more about
+        how the background drifted than about your ear. Treat this session as a measurement of
+        <em>baseline load</em>, not of threshold, and repeat it rested.`;
+    } else if (iffy) {
+      html += ` Symptoms were present without a stimulus but compensation never failed, so the
+        tracked variable still has a floor. The thresholds are usable, but shifted toward
+        "more sensitive" by however much that background contributes.`;
+    } else {
+      html += ` Nothing was reported without a stimulus, so the thresholds are not sitting on top
+        of a background of spontaneous symptoms.`;
+    }
+    if (SES.baseline && SES.baseline.overridden) {
+      html += `<br><br><strong>The opening baseline check flagged this session and it was continued anyway.</strong>`;
+    }
+    html += `</div>`;
+  }
 
   // ── Headline: the threshold per ear, and the gap between them. This is the whole point of
   // the session — a level in dB, not a category, so the two ears are compared on a continuous
@@ -880,21 +1021,51 @@ function buildReport() {
 
   html += `<div class="rpt-section"><h3>Staircase tracks</h3>${stairPlot(stairs)}</div>`;
 
-  // ── Catch trials: the credibility anchor. Without them a "symptomatic" rate has no baseline
-  // to be judged against, since spontaneous symptoms happen anyway.
+  // ── Catch trials in detail, split by when they ran: the opening baseline block is announced
+  // and sits at a known position, the interspersed ones are blind. Pooling them into one rate
+  // would hide the case where the baseline started clean and only degraded later, which is the
+  // difference between "too tired to start" and "the session itself did this".
   if (catches.length) {
-    const cSym = catches.filter(t => t.response && t.response !== 'asymptomatic').length;
-    const cFail = catches.filter(t => t.response === 'cannot').length;
-    const cCi = wilsonCI(cSym, catches.length);
-    html += `<div class="rpt-section"><h3>Silent catch trials (no probe at all)</h3><table><tr>
-      <th>n</th><th>Reported a symptom</th><th>Rate</th><th>95% CI</th><th>Of which uncompensable</th></tr>
-      <tr><td>${catches.length}</td><td>${cSym}</td><td>${pct(cCi.p)}</td>
-      <td>${cCi.p == null ? '—' : `[${pct(cCi.lo)}, ${pct(cCi.hi)}]`}</td><td>${cFail}</td></tr></table>
-      <p class="small mt">${cSym === 0
-        ? 'No symptom reported on any silent trial, so the thresholds above are not sitting on top of a background of spontaneous reports.'
-        : `A non-zero rate here is expected — spontaneous symptoms happen — but it sets a floor: near-threshold ` +
-          `responses should be read against this ${pct(cCi.p)} baseline, not against zero.`}
-      With only ${catches.length} catch trials this rate is very imprecise; it is a sanity check, not a measurement.</p></div>`;
+    const inter = catches.filter(t => !t.isBaseline);
+    html += `<div class="rpt-section"><h3>Silent trials (no probe at all)</h3><table><tr>
+      <th>Block</th><th>n</th><th>Symptomatic</th><th>Rate</th><th>95% CI</th><th>Uncompensable</th></tr>`;
+    for (const [nm, rows] of [['Opening baseline', baseline], ['Interspersed (blind)', inter], ['All', catches]]) {
+      if (!rows.length) continue;
+      const k = rows.filter(t => t.response && t.response !== 'asymptomatic').length;
+      const c = wilsonCI(k, rows.length);
+      html += `<tr><td>${nm}</td><td>${rows.length}</td><td>${k}</td><td>${pct(c.p)}</td>
+        <td>${c.p == null ? '—' : `[${pct(c.lo)}, ${pct(c.hi)}]`}</td>
+        <td>${rows.filter(t => t.response === 'cannot').length}</td></tr>`;
+    }
+    html += `</table><p class="small mt">Handful-of-trials rates, so the confidence intervals are
+      very wide — these are a validity gate, not a measurement. What matters is whether the
+      uncompensable column is zero.</p></div>`;
+  }
+
+  // ── Recovery time. Free measure: the self-paced washout has to be waited out anyway, so how
+  // long it takes is recorded rather than discarded the way a fixed timer discarded it. Rising
+  // recovery times across a session are the earliest sign of accumulating load.
+  const recs = SES.trials.filter(t => t.recoveryMs != null);
+  if (recs.length >= 4) {
+    const md = a => { const s = a.slice().sort((x, y) => x - y), m = s.length >> 1;
+                      return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+    const secs = v => v == null ? '—' : (v / 1000).toFixed(1) + 's';
+    html += `<div class="rpt-section"><h3>Recovery time (probe off → back to baseline)</h3><table><tr>
+      <th>Group</th><th>n</th><th>Median</th><th>Max</th></tr>`;
+    const groups = [['All trials', recs]];
+    ['asymptomatic', 'full', 'cannot'].forEach(r => {
+      const rows = recs.filter(t => t.response === r);
+      if (rows.length) groups.push([RESP_LABEL[r], rows]);
+    });
+    const half = Math.ceil(recs.length / 2);
+    groups.push(['First half of session', recs.slice(0, half)], ['Second half of session', recs.slice(half)]);
+    groups.forEach(([nm, rows]) => {
+      const v = rows.map(t => t.recoveryMs);
+      html += `<tr><td>${nm}</td><td>${rows.length}</td><td>${secs(md(v))}</td><td>${secs(Math.max(...v))}</td></tr>`;
+    });
+    html += `</table><p class="small mt">Recovery should scale with how bad the trial was. If the
+      second half is much slower than the first, load is accumulating faster than it clears and the
+      session is too long — regardless of what the thresholds say.</p></div>`;
   }
 
   // ── Where in the level range each answer actually landed. Split by ear on purpose: the two
@@ -944,6 +1115,12 @@ function buildReport() {
   }
   html += `</div>`;
 
+  if (SES.baseline) {
+    html += `<p class="small">Opening baseline check: ${SES.baseline.sympt}/${SES.baseline.n} silent trials
+      symptomatic, ${SES.baseline.cannot} uncompensable` +
+      (SES.baseline.overridden ? ' — <strong>flagged, continued on request</strong>' : '') + `.</p>`;
+  }
+
   // ── Drift check. The previous fixed-level session degraded steadily from start to finish, so
   // a staircase that slides downward over time is measuring fatigue as much as sensitivity.
   html += `<div class="rpt-section"><h3>Drift across the session (halves)</h3><table><tr>
@@ -980,8 +1157,8 @@ function dlFile(name, content, mime) {
 // One row per completed trial rather than per log event — a flat trial table is what any
 // downstream analysis actually wants.
 function downloadCSV() {
-  const cols = ['n', 'freq', 'ear', 'levelDb', 'isCatch', 'response', 'earGuess',
-                'stairTrials', 'reversalsAfter', 'timeout'];
+  const cols = ['n', 'freq', 'ear', 'levelDb', 'isCatch', 'isBaseline', 'response', 'earGuess',
+                'recoveryMs', 'stairTrials', 'reversalsAfter', 'timeout'];
   const rows = [cols.join(',')];
   SES.trials.forEach(t => { rows.push(cols.map(c => `"${t[c] ?? ''}"`).join(',')); });
   dlFile('scds_threshold_trials.csv', rows.join('\n'), 'text/csv');
@@ -996,7 +1173,8 @@ function downloadJSON() {
     staircase: { startDb: STAIR_START_DB, minDb: STAIR_MIN_DB, maxDb: STAIR_MAX_DB,
                  stepCoarse: STAIR_STEP_COARSE, stepFine: STAIR_STEP_FINE,
                  targetReversals: SES.targetReversals, thresholdFromLast: THRESHOLD_FROM_LAST,
-                 gateMs: SES.gateMs },
+                 gateMs: SES.gateMs, washoutMinMs: WASHOUT_MIN_MS, washoutCapMs: WASHOUT_CAP_MS },
+    baseline: SES.baseline,
     thresholds,
     stairs: (SES.stairs || []).map(s => ({ ear: s.ear, reversals: s.reversals, trials: s.trials, track: s.track })),
     trials: SES.trials, log: SES.log

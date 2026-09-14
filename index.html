@@ -26,12 +26,21 @@ a.card p { font-size:0.85rem; line-height:1.55; color:var(--muted); }
 <main>
   <h1>SCDS probe tools</h1>
 
-  <a class="card primary" href="scds_threshold_iphone.html">
+  <a class="card primary" href="scds_2x2x2_iphone.html">
     <span class="tag tag-now">Current</span>
+    <h2>2×2×2 — frequency × drift × side</h2>
+    <p>20 Hz vs 500 Hz, steady vs aggressively drifting, left vs right, fully crossed, with silent
+      sham trials and a self-paced washout. Tests whether laterality depends on frequency — the
+      bone-conduction prediction — using both the symptom rating and, independently, whether the
+      side can be named at all. No condition is ever shown on screen.</p>
+  </a>
+
+  <a class="card" href="scds_threshold_iphone.html">
+    <span class="tag tag-old">Previous</span>
     <h2>Threshold staircase</h2>
-    <p>Measures the level at which full compensation fails, separately per ear, and reports it in dB
-      with a confidence interval. Most trials sit near threshold rather than at maximum, so it is
-      gentler and more sensitive than the fixed-level design. ~8 minutes.</p>
+    <p>Measures the level at which full compensation fails, separately per ear, in dB. Superseded:
+      the desktop session found no dose-response across 12 dB, so there is no threshold for a
+      staircase to converge on, which is how it in fact behaved.</p>
   </a>
 
   <a class="card" href="scds_provocation_iphone.html">
