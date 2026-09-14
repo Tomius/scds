@@ -118,8 +118,12 @@ td { padding: 5px 7px; border-bottom: 1px solid var(--border); }
     that still leaves headroom for the sea sound, with laterality
     (<strong>left / right / both / anti-phase</strong>) chosen at random on every trial.
     No calibration staircases: kept deliberately simple so there's nothing subtle that could
-    quietly go wrong and undermine the results. A recorded sea/surf sound loops continuously
-    in the background for the whole session.
+    quietly go wrong and undermine the results.<br><br>
+    Exactly <strong>half the trials play the probe with the recorded sea/surf sound</strong> in the
+    background, and the <strong>other half play the probe completely clean</strong> — no ambient sound
+    at all — so you can directly compare your reaction with vs. without it. Which half a given trial
+    falls into is shown on screen (not blinded); the fade between the two is a smooth 0.4s ramp before
+    the probe starts, never mid-tone.
   </div>
   <div class="warn-box">
     <strong>⚠ Read before proceeding</strong><br><br>
@@ -219,6 +223,8 @@ td { padding: 5px 7px; border-bottom: 1px solid var(--border); }
 // ══════════════════════════ CONSTANTS ══════════════════════════
 const FREQS = [10, 20, 30];
 const EARS  = ['left', 'right', 'both', 'anti'];   // 4 possible lateralities, drawn independently per trial
+const AMBIENTS = ['sea', 'none'];                  // exactly half the trials get each, balanced not just random
+const AMBIENT_XFADE_S = 0.4;                       // click-free ramp when the sea sound is switched in/out per trial
 // Single combined minimum before a response is accepted — long enough to notice a symptom
 // AND actually attempt compensation before choosing among the 4 response options below.
 const MAIN_MIN_LISTEN_MS = 10000;
@@ -533,15 +539,41 @@ document.querySelectorAll('.safety-cb').forEach(cb => cb.addEventListener('chang
 updateSeaLabel(); updateEstimate();
 
 // ══════════════════════════ MAIN TEST ══════════════════════════
+// Fisher-Yates using the session's seeded PRNG, so the whole trial order stays reproducible.
+function shuffleInPlace(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(SES.prng() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 function buildTrialQueue() {
   const total = +el('cfg-trials').value || 36;
+  // Ambient is a deliberate EXACT half/half split (not an independent per-trial coin flip like
+  // freq/ear) so a within-session sea-vs-clean comparison has balanced N regardless of trial count.
+  const ambientList = shuffleInPlace(
+    Array.from({ length: total }, (_, i) => (i < Math.ceil(total / 2) ? 'sea' : 'none'))
+  );
   const q = [];
   for (let i = 0; i < total; i++) {
     const freq = FREQS[Math.floor(SES.prng() * FREQS.length)];
     const ear = EARS[Math.floor(SES.prng() * EARS.length)];
-    q.push({ freq, ear, isRepeat: false });
+    q.push({ freq, ear, ambient: ambientList[i], isRepeat: false });
   }
   return q;
+}
+
+// Ramps the sea sound in or out over AMBIENT_XFADE_S — click-free, and independent of whatever
+// the sea sound's own waveform is doing at that instant. A repeat trial always reuses its
+// original trial's ambient condition (set when the repeat is spliced into the queue), since it's
+// re-testing the exact same condition, not a fresh random draw.
+function setAmbientFor(trial) {
+  if (!AX || !AN.seaGain) return;
+  const now = AX.currentTime;
+  const target = trial.ambient === 'sea' ? dbToLin(SES.seaDb) : 0;
+  AN.seaGain.gain.cancelScheduledValues(now);
+  AN.seaGain.gain.setTargetAtTime(target, now, AMBIENT_XFADE_S / 3);
 }
 
 let statCounts = { asymptomatic: 0, full: 0, temporary: 0, none: 0, rep: 0 };
@@ -558,10 +590,13 @@ function bumpStat(resp, isRepeat) {
 async function runMainTrial(trial, n, total) {
   showScreen('s-main');
   el('main-trial-n').textContent = n; el('main-trial-total').textContent = total;
-  setPhase('ph-probe', 'Listening… try to compensate if needed, then rate below');
+  const ambientTag = trial.ambient === 'sea' ? ' [with sea sound]' : ' [clean — no ambient]';
+  setPhase('ph-probe', 'Listening…' + ambientTag + ' try to compensate if needed, then rate below');
   el('sev-buttons').style.visibility = 'hidden';
+  setAmbientFor(trial);
+  await sleep(AMBIENT_XFADE_S * 1000); checkAbort();   // let the sea ramp settle before the probe starts
   curProbeGains = startProbe(trial.freq, trial.ear);
-  logSes('trial_probe_start', { n, freq: trial.freq, ear: trial.ear, isRepeat: trial.isRepeat, repeatOf: trial.repeatOf });
+  logSes('trial_probe_start', { n, freq: trial.freq, ear: trial.ear, ambient: trial.ambient, isRepeat: trial.isRepeat, repeatOf: trial.repeatOf });
 
   await sleep(MAIN_MIN_LISTEN_MS); checkAbort();
   el('sev-buttons').style.visibility = 'visible';
@@ -572,7 +607,7 @@ async function runMainTrial(trial, n, total) {
   logSes('trial_response', { n, response, timeout: respKey === 'timeout' });
 
   stopProbeCur();
-  setPhase('ph-wash', 'Washout — sea sound only, probe is off');
+  setPhase('ph-wash', trial.ambient === 'sea' ? 'Washout — sea sound only, probe is off' : 'Washout — silence, probe is off');
   const washMs = WASHOUT_MIN_MS + SES.prng() * WASHOUT_MAX_MS;
   await sleep(washMs); checkAbort();
 
@@ -600,7 +635,7 @@ async function runMainTest() {
     n++;
     SES.trials.push(done);
     if ((done.response === 'temporary' || done.response === 'none') && !done.isRepeat) {
-      queue.splice(i + 1, 0, { freq: done.freq, ear: done.ear, isRepeat: true, repeatOf: done.n });
+      queue.splice(i + 1, 0, { freq: done.freq, ear: done.ear, ambient: done.ambient, isRepeat: true, repeatOf: done.n });
     }
     i++;
   }
@@ -685,23 +720,47 @@ function buildReport() {
   const real = SES.trials.filter(t => !t.isRepeat);
   const reps = SES.trials.filter(t => t.isRepeat);
 
+  // ── Headline comparison: does the ambient sea sound itself change the response, vs. the
+  // probe presented completely clean/isolated? Balanced ~50/50 split, so n is comparable
+  // between rows. Collapsed across freq/laterality for statistical power; the per-freq/ear
+  // breakdown further down still carries the ambient split per row for finer inspection.
+  html += `<div class="rpt-section"><h3>Sea sound vs. clean probe (all frequencies/lateralities pooled)</h3><table><tr>
+    <th>Ambient</th><th>n</th><th>Asymptomatic</th><th>Full comp.</th><th>Temporary comp.</th><th>No comp.</th>
+    <th>Symptomatic rate</th><th>95% CI</th></tr>`;
+  for (const amb of AMBIENTS) {
+    const rows = real.filter(t => t.ambient === amb);
+    const cA = rows.filter(t => t.response === 'asymptomatic').length;
+    const cF = rows.filter(t => t.response === 'full').length;
+    const cT = rows.filter(t => t.response === 'temporary').length;
+    const cN = rows.filter(t => t.response === 'none').length;
+    const k = rows.filter(t => t.response && t.response !== 'asymptomatic').length;
+    const c = wilsonCI(k, rows.length);
+    html += `<tr><td>${amb === 'sea' ? 'With sea sound' : 'Clean (no ambient)'}</td><td>${rows.length}</td>
+      <td>${cA}</td><td>${cF}</td><td>${cT}</td><td>${cN}</td><td>${pct(c.p)}</td>
+      <td>${c.p == null ? '—' : `[${pct(c.lo)}, ${pct(c.hi)}]`}</td></tr>`;
+  }
+  html += `</table><p class="small mt">Overlapping CIs don't rule out a difference with this few trials per arm —
+    treat this as a first look, not a verdict. Widely separated CIs, or a consistent gap replicated across
+    separate sessions, is what would actually support "the sea sound changes the reaction."</p></div>`;
+
   html += `<div class="rpt-section"><h3>Main trials (first presentations, n=${real.length})</h3><table><tr>
-    <th>Freq</th><th>Laterality</th><th>n</th><th>Asymptomatic</th><th>Full comp.</th><th>Temporary comp.</th><th>No comp.</th></tr>`;
-  for (const f of FREQS) for (const e of EARS) {
-    const rows = real.filter(t => t.freq === f && t.ear === e);
+    <th>Freq</th><th>Laterality</th><th>Ambient</th><th>n</th><th>Asymptomatic</th><th>Full comp.</th><th>Temporary comp.</th><th>No comp.</th></tr>`;
+  for (const f of FREQS) for (const e of EARS) for (const amb of AMBIENTS) {
+    const rows = real.filter(t => t.freq === f && t.ear === e && t.ambient === amb);
     if (!rows.length) continue;
     const cA = rows.filter(t => t.response === 'asymptomatic').length;
     const cF = rows.filter(t => t.response === 'full').length;
     const cT = rows.filter(t => t.response === 'temporary').length;
     const cN = rows.filter(t => t.response === 'none').length;
-    html += `<tr><td>${f} Hz</td><td>${e}</td><td>${rows.length}</td><td>${cA}</td><td>${cF}</td><td>${cT}</td><td>${cN}</td></tr>`;
+    html += `<tr><td>${f} Hz</td><td>${e}</td><td>${amb === 'sea' ? 'sea' : 'clean'}</td><td>${rows.length}</td>
+      <td>${cA}</td><td>${cF}</td><td>${cT}</td><td>${cN}</td></tr>`;
   }
   html += `</table></div>`;
 
   if (reps.length) {
     html += `<div class="rpt-section"><h3>Immediate repeats (temporary/no compensation on first presentation, n=${reps.length})</h3><table><tr>
-      <th>Freq</th><th>Laterality</th><th>Repeat response</th></tr>`;
-    reps.forEach(t => { html += `<tr><td>${t.freq} Hz</td><td>${t.ear}</td><td>${RESP_LABEL[t.response] ?? '—'}</td></tr>`; });
+      <th>Freq</th><th>Laterality</th><th>Ambient</th><th>Repeat response</th></tr>`;
+    reps.forEach(t => { html += `<tr><td>${t.freq} Hz</td><td>${t.ear}</td><td>${t.ambient === 'sea' ? 'sea' : 'clean'}</td><td>${RESP_LABEL[t.response] ?? '—'}</td></tr>`; });
     html += `</table></div>`;
   }
 
@@ -768,7 +827,7 @@ function dlFile(name, content, mime) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 function downloadCSV() {
-  const cols = ['t_ms', 'type', 'n', 'freq', 'ear', 'response', 'guess', 'actualEar', 'isRepeat', 'repeatOf', 'timeout'];
+  const cols = ['t_ms', 'type', 'n', 'freq', 'ear', 'ambient', 'response', 'guess', 'actualEar', 'isRepeat', 'repeatOf', 'timeout'];
   const rows = [cols.join(',')];
   SES.log.forEach(e => { rows.push(cols.map(c => `"${e[c] ?? ''}"`).join(',')); });
   dlFile('scds_iphone_events.csv', rows.join('\n'), 'text/csv');
