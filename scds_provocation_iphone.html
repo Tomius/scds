@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>SCDS Infrasound Probe — iPhone</title>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --border: #30363d; --text: #e6edf3;
+  --muted: #8b949e; --accent: #2ea043; --warn: #d29922; --danger: #f85149; --probe: #388bfd;
+  --font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body {
+  font-family: var(--font); background: var(--bg); color: var(--text);
+  min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+  padding-bottom: 50px; -webkit-user-select: none; user-select: none;
+}
+.screen { display: none; width: 100%; max-width: 520px; padding: 20px 16px; flex-direction: column; gap: 16px; }
+.screen.active { display: flex; }
+h1 { font-size: 1.3rem; font-weight: 700; }
+h2 { font-size: 1.0rem; font-weight: 600; color: var(--muted); }
+p { line-height: 1.55; font-size: 0.92rem; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.btn {
+  padding: 14px 18px; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700;
+  cursor: pointer; transition: opacity .15s; font-family: var(--font); width: 100%;
+}
+.btn:disabled { opacity: .32; cursor: not-allowed; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-secondary { background: var(--border); color: var(--text); }
+.btn:not(:disabled):active { opacity: .75; }
+.checklist { display: flex; flex-direction: column; gap: 11px; }
+.check-item { display: flex; align-items: flex-start; gap: 10px; line-height: 1.5; font-size: 0.9rem; }
+.check-item input[type=checkbox] { margin-top: 3px; width: 20px; height: 20px; accent-color: var(--accent); flex-shrink: 0; }
+label.field { font-size: 0.8rem; color: var(--muted); display: block; margin-bottom: 4px; }
+input[type=number], select {
+  background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  padding: 8px 10px; border-radius: 6px; font-size: 1rem; width: 100%; font-family: var(--font);
+}
+input[type=range] { width: 100%; accent-color: var(--probe); height: 28px; }
+.warn-box { background: #1e1300; border: 1px solid var(--warn); border-radius: 8px; padding: 14px; font-size: 0.86rem; line-height: 1.6; }
+.info-box { background: #0c1a2e; border: 1px solid var(--probe); border-radius: 8px; padding: 14px; font-size: 0.86rem; line-height: 1.6; }
+.small { font-size: 0.78rem; color: var(--muted); }
+.mono { font-family: monospace; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mt { margin-top: 8px; }
+hr { border: none; border-top: 1px solid var(--border); margin: 6px 0; }
+
+#btn-stop {
+  position: fixed; top: 10px; right: 10px; z-index: 1000; padding: 9px 15px;
+  background: var(--danger); color: #fff; border: none; border-radius: 8px;
+  font-size: 0.85rem; font-weight: 700; font-family: var(--font);
+}
+
+#phase-box {
+  font-size: 1.15rem; font-weight: 700; text-align: center; padding: 16px;
+  border-radius: 10px; background: var(--surface); border: 2px solid var(--border);
+  min-height: 60px; display: flex; align-items: center; justify-content: center;
+  transition: border-color .3s, color .3s;
+}
+#phase-box.ph-probe { border-color: var(--probe); color: var(--probe); }
+#phase-box.ph-wash { border-color: var(--warn); color: var(--warn); }
+#phase-box.ph-ready { border-color: var(--accent); color: var(--accent); }
+
+.wait-line { text-align: center; font-size: 0.85rem; color: var(--muted); min-height: 18px; }
+
+.resp-col { display: flex; flex-direction: column; gap: 10px; }
+.resp-btn {
+  padding: 16px 14px; font-size: 0.94rem; font-weight: 600; border: 1px solid var(--border);
+  border-left: 5px solid var(--border); background: var(--surface); color: var(--text);
+  border-radius: 8px; font-family: var(--font); text-align: left; cursor: pointer; line-height: 1.4;
+}
+.resp-btn:disabled { opacity: .3; }
+.resp-1 { border-left-color: var(--accent); }
+.resp-2 { border-left-color: var(--probe); }
+.resp-3 { border-left-color: var(--warn); }
+.resp-4 { border-left-color: var(--danger); }
+
+.stats-row { display: flex; gap: 14px; font-size: 0.78rem; color: var(--muted); flex-wrap: wrap; justify-content: center; }
+.stat-val { color: var(--text); font-weight: 700; }
+
+#guess-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.9); z-index: 600;
+  align-items: center; justify-content: center;
+}
+#guess-overlay.vis { display: flex; }
+.ov-card {
+  background: var(--surface); border: 2px solid var(--probe); border-radius: 14px;
+  padding: 22px; max-width: 420px; width: 92%; display: flex; flex-direction: column; gap: 14px;
+}
+.ov-card h3 { font-size: 1rem; color: var(--probe); }
+.ov-card p { font-size: 0.86rem; color: var(--muted); }
+.opt-col { display: flex; flex-direction: column; gap: 9px; }
+.opt-btn {
+  padding: 14px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+  font-size: 0.92rem; background: var(--bg); color: var(--text); font-family: var(--font); text-align: center;
+}
+.opt-btn:disabled { opacity: .3; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 6px; }
+th { background: var(--surface); padding: 6px 7px; text-align: left; border-bottom: 2px solid var(--border); }
+td { padding: 5px 7px; border-bottom: 1px solid var(--border); }
+.rpt-section { margin-bottom: 18px; }
+.rpt-section h3 { font-size: 0.9rem; color: var(--muted); margin-bottom: 6px; }
+</style>
+</head>
+<body>
+
+<button id="btn-stop" onclick="emergencyStop()">⏹ STOP</button>
+
+<!-- ═══════════════ SCREEN: INTRO ═══════════════ -->
+<div id="s-intro" class="screen active">
+  <h1>SCDS Infrasound Probe — iPhone</h1>
+  <div class="info-box">
+    Standalone variant for <strong>iOS Safari only</strong>. One session tests <strong>one
+    frequency</strong> (default 20&nbsp;Hz — the most provocative in testing so far), delivered as an
+    undistorted sine, with laterality (<strong>left / right / both / anti-phase</strong>) balanced
+    across the session.<br><br>
+    Two factors are crossed and independently balanced, so neither can confound the other: is the
+    tone <strong>steady or drifting</strong> (±15% frequency wander in smooth 0.5–1s glides — the
+    primary question), and is the <strong>sea/surf sound on or off</strong> for that trial. Because
+    ambient is balanced equally within each predictability arm, the steady-vs-drifting result stays
+    fully powered regardless of whether ambient turns out to matter — the only thing that costs
+    precision is the (secondary, exploratory) question of whether ambient changes the *size* of the
+    predictability effect. Neither factor is shown on screen — no on-screen tag says which
+    condition a given trial is, since that would just be telling you what reaction is expected.<br><br>
+    Rate each trial with the 4-level buttons once you've had a chance to notice a symptom and
+    attempt compensation.
+  </div>
+  <div class="warn-box">
+    <strong>⚠ Read before proceeding</strong><br><br>
+    This delivers low-frequency audio at full system volume that may provoke oscillopsia, imbalance,
+    nausea, or vertigo. Do not proceed if standing, near fall hazards, driving, or in an active severe
+    vestibular episode.<br><br>
+    <strong>Stop immediately</strong> with the red STOP button on pain, sharp tinnitus increase, or
+    disabling vertigo. Do not drive for at least 30 minutes afterwards.
+  </div>
+  <div class="card checklist" id="safety-checks">
+    <label class="check-item"><input type="checkbox" class="safety-cb"> I am seated or reclined in a safe location</label>
+    <label class="check-item"><input type="checkbox" class="safety-cb"> I am not in an active severe vestibular episode right now</label>
+    <label class="check-item"><input type="checkbox" class="safety-cb"> Earbuds are sealed in-canal (not loose, not open-fit)</label>
+    <label class="check-item"><input type="checkbox" class="safety-cb"> System volume is at maximum; Low Power Mode is off</label>
+    <label class="check-item"><input type="checkbox" class="safety-cb"> Auto-Lock is set to Never for this session; Do Not Disturb is on</label>
+  </div>
+  <div class="card">
+    <label class="field">Sea sound volume when it's on for a trial — a louder sea leaves less headroom for the probe, so the two trade off directly. Probe loudness is fixed at this budget for every trial, on or off, so probe level itself never differs between ambient conditions.</label>
+    <input type="range" id="cfg-seadb" min="-36" max="-6" step="1" value="-18" oninput="updateSeaLabel()">
+    <div class="row" style="justify-content:space-between">
+      <span class="small" id="sea-label">-18 dBFS · moderate</span>
+      <button class="btn btn-secondary" id="btn-preview-sea" style="width:auto;padding:8px 14px;font-size:0.82rem" onclick="toggleSeaPreview()">🔊 Preview</button>
+    </div>
+  </div>
+  <div class="card">
+    <label class="field">Probe check — plays one probe tone on its own, no sea sound, at the exact level the session will use</label>
+    <div class="row">
+      <button class="btn btn-secondary" id="btn-probe-10" style="width:auto;padding:10px 16px;font-size:0.85rem" onclick="toggleProbeCheck(10)">▶ 10 Hz</button>
+      <button class="btn btn-secondary" id="btn-probe-20" style="width:auto;padding:10px 16px;font-size:0.85rem" onclick="toggleProbeCheck(20)">▶ 20 Hz</button>
+      <button class="btn btn-secondary" id="btn-probe-30" style="width:auto;padding:10px 16px;font-size:0.85rem" onclick="toggleProbeCheck(30)">▶ 30 Hz</button>
+      <button class="btn btn-secondary" id="btn-probe-40" style="width:auto;padding:10px 16px;font-size:0.85rem" onclick="toggleProbeCheck(40)">▶ 40 Hz</button>
+      <button class="btn btn-secondary" id="btn-probe-60" style="width:auto;padding:10px 16px;font-size:0.85rem" onclick="toggleProbeCheck(60)">▶ 60 Hz</button>
+    </div>
+    <p class="small mt">A pure sine straight to the output — no limiter, no distortion. A/B this against a
+      known-good external tone generator to confirm the engine, your earbuds and iOS really are
+      reproducing the frequency before you commit to a session.</p>
+  </div>
+  <div class="card">
+    <label class="field">Probe frequency for this session (20&nbsp;Hz recommended — 10&nbsp;Hz tested inert, 20 and 30 equally provocative, so 40/60 are worth mapping next)</label>
+    <select id="cfg-freq" onchange="updateEstimate()">
+      <option value="10">10 Hz</option>
+      <option value="20" selected>20 Hz</option>
+      <option value="30">30 Hz</option>
+      <option value="40">40 Hz</option>
+      <option value="60">60 Hz</option>
+    </select>
+  </div>
+  <div class="card">
+    <label class="field">Number of trials (crossed 2×2: steady/drifting × sea/clean, each of the 4 cells equal size, laterality balanced inside each cell)</label>
+    <input type="number" id="cfg-trials" value="36" min="8" max="90" step="4" oninput="updateEstimate()">
+    <p class="small mt" id="estimate-txt"></p>
+  </div>
+  <button class="btn btn-primary" id="btn-start" disabled onclick="handleStart()">▶ Begin</button>
+</div>
+
+<!-- ═══════════════ SCREEN: MAIN TEST ═══════════════ -->
+<div id="s-main" class="screen">
+  <h2>Trial <span id="main-trial-n">1</span> / <span id="main-trial-total">36</span></h2>
+  <div id="phase-box" class="ph-probe">Listening…</div>
+  <div class="wait-line" id="main-wait"></div>
+  <div class="resp-col" id="sev-buttons">
+    <button class="resp-btn resp-1" id="sev-1" data-val="asymptomatic">1 · Asymptomatic at rest</button>
+    <button class="resp-btn resp-2" id="sev-2" data-val="full">2 · Symptomatic, but full compensation possible</button>
+    <button class="resp-btn resp-3" id="sev-3" data-val="temporary">3 · Temporary compensation possible</button>
+    <button class="resp-btn resp-4" id="sev-4" data-val="none">4 · No compensation possible at all</button>
+  </div>
+  <div class="stats-row">
+    <span>Asymptomatic <span class="stat-val" id="stat-asymptomatic">0</span></span>
+    <span>Full comp <span class="stat-val" id="stat-full">0</span></span>
+    <span>Temporary <span class="stat-val" id="stat-temporary">0</span></span>
+    <span>No comp <span class="stat-val" id="stat-none">0</span></span>
+    <span>Repeats <span class="stat-val" id="stat-rep">0</span></span>
+  </div>
+</div>
+
+<!-- ═══════════════ SCREEN: REPORT ═══════════════ -->
+<div id="s-report" class="screen">
+  <h1>Session report</h1>
+  <div class="row">
+    <button class="btn btn-secondary" onclick="downloadCSV()">⬇ CSV</button>
+    <button class="btn btn-secondary" onclick="downloadJSON()">⬇ JSON</button>
+    <button class="btn btn-primary" onclick="startNewSession()">↺ New session</button>
+  </div>
+  <div id="report-body"></div>
+  <div class="warn-box small">
+    Uncalibrated self-experimentation tool. The probe is a pure sine on the selected channel(s),
+    summed with the sea sound so that the total always stays below full scale — no limiter or
+    soft-clipper is in the path, so no harmonic distortion is added. No absolute SPL is implied.
+    Not a diagnostic device.
+  </div>
+</div>
+
+<!-- ── Ear-guess overlay ── -->
+<div id="guess-overlay">
+  <div class="ov-card">
+    <h3>Which side?</h3>
+    <p>Best guess — this is scored separately and never affects your main result.</p>
+    <div class="opt-col">
+      <button class="opt-btn" id="guess-left" data-val="left">Left</button>
+      <button class="opt-btn" id="guess-right" data-val="right">Right</button>
+      <button class="opt-btn" id="guess-unsure" data-val="unsure">Can't tell / both</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ══════════════════════════ CONSTANTS ══════════════════════════
+const FREQS = [10, 20, 30, 40, 60];                // probe-check buttons only; the session frequency is configurable
+const EARS  = ['left', 'right', 'both', 'anti'];   // balanced within each mode, not drawn independently
+// The one manipulated variable: is the stimulus predictable? 'fixed' is a steady sine, 'jitter'
+// wanders its frequency so adaptation/prediction has nothing stable to lock onto. Everything
+// else (level, laterality mix, sea sound, timing) is held identical between the two arms.
+const MODES = ['fixed', 'jitter'];
+const JITTER_DEPTH = 0.15;                         // ±15% around the centre frequency
+const JITTER_SEG_MIN_S = 0.5, JITTER_SEG_MAX_S = 1.0;  // glide duration to each new target
+// Second factor, crossed with mode and independently balanced within each mode arm — not a
+// separate "one variable at a time" session. Because it's balanced, it can never bias the
+// mode comparison even if it turns out to matter; it only costs precision on the mode×ambient
+// interaction specifically, which this trial budget isn't powered to resolve on its own.
+const AMBIENTS = ['sea', 'none'];
+const AMBIENT_XFADE_S = 0.4;                       // click-free ramp when the sea sound is switched in/out per trial
+// Single combined minimum before a response is accepted — long enough to notice a symptom
+// AND actually attempt compensation before choosing among the 4 response options below.
+const MAIN_MIN_LISTEN_MS = 10000;
+const MAIN_MAX_LISTEN_MS = 45000;      // hard safety cap -> auto timeout
+const WASHOUT_MIN_MS = 6000, WASHOUT_MAX_MS = 4000; // random extra 0-4000 added to MIN
+const SEA_HP_HZ = 180;                 // hard floor for ambient content, well clear of the 10-30Hz probe band
+const SEA_FILE = 'rmultimediaeu-ocean-waves-250310.mp3';   // must sit next to this HTML file
+
+function mulberry32(seed) {
+  return function () {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function el(id) { return document.getElementById(id); }
+function dbToLin(db) { return Math.pow(10, db / 20); }
+
+// Headroom budget. The probe and the sea sound are summed into the same channels, so their peaks
+// add. The probe therefore gets everything left over after the sea's peak, minus a small margin
+// for MP3-decoder and filter overshoot. Keeping the sum strictly below full scale is what allows
+// the signal path to stay perfectly linear — see the comment on buildGraph for why that matters.
+const PEAK_MARGIN = 0.02;
+function probeLinFor(seaDb) { return Math.max(0.2, 1 - dbToLin(seaDb) - PEAK_MARGIN); }
+function linToDb(lin) { return 20 * Math.log10(lin); }
+function sleepBase(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ══════════════════════════ ABORT / SLEEP (interruptible) ══════════════════════════
+let ABORTED = false;
+let abortHandlers = [];
+function triggerAbort() {
+  if (ABORTED) return;
+  ABORTED = true;
+  abortHandlers.slice().forEach(f => { try { f(); } catch (e) {} });
+}
+function sleep(ms) {
+  return new Promise(resolve => {
+    if (ABORTED) return resolve();
+    const t = setTimeout(finish, ms);
+    function finish() { cleanup(); resolve(); }
+    function cleanup() { clearTimeout(t); abortHandlers = abortHandlers.filter(f => f !== finish); }
+    abortHandlers.push(finish);
+  });
+}
+function checkAbort() { if (ABORTED) throw new Error('SESSION_ABORTED'); }
+
+// Wait for a click on any of `ids`. Each button carries data-val (or falls back to id).
+// If minMs > 0, the buttons are disabled and a countdown is shown in `waitEl` until minMs elapses.
+function waitForChoice(ids, minMs = 0, waitEl = null) {
+  return new Promise(resolve => {
+    if (ABORTED) return resolve('unsure');
+    let settled = false;
+    function settle(val) { if (settled) return; settled = true; cleanup(); resolve(val); }
+    function onClick(e) { settle(e.currentTarget.dataset.val ?? e.currentTarget.id); }
+    ids.forEach(id => { const b = el(id); if (minMs > 0) b.disabled = true; b.addEventListener('click', onClick); });
+    let iv = null;
+    function onAbort() { settle('unsure'); }
+    abortHandlers.push(onAbort);
+    if (minMs > 0) {
+      let remain = Math.ceil(minMs / 1000);
+      if (waitEl) waitEl.textContent = `You can respond in ${remain}s…`;
+      iv = setInterval(() => {
+        remain--;
+        if (waitEl) waitEl.textContent = remain > 0 ? `You can respond in ${remain}s…` : '';
+        if (remain <= 0) { clearInterval(iv); iv = null; ids.forEach(id => el(id).disabled = false); }
+      }, 1000);
+    }
+    function cleanup() {
+      ids.forEach(id => el(id).removeEventListener('click', onClick));
+      if (iv) clearInterval(iv);
+      if (waitEl) waitEl.textContent = '';
+      abortHandlers = abortHandlers.filter(f => f !== onAbort);
+    }
+  });
+}
+function withTimeout(promise, ms, fallback) {
+  return new Promise(resolve => {
+    let done = false;
+    const t = setTimeout(() => { if (!done) { done = true; resolve(fallback); } }, ms);
+    promise.then(v => { if (!done) { done = true; clearTimeout(t); resolve(v); } });
+  });
+}
+
+// ══════════════════════════ SESSION STATE ══════════════════════════
+let SES = { seed: 0, prng: null, startWall: 0, log: [], trials: [], seaDb: -18 };
+
+function logSes(type, data) {
+  SES.log.push(Object.assign({ t: performance.now() - SES.startWall, type }, data || {}));
+}
+
+// ══════════════════════════ AUDIO ENGINE ══════════════════════════
+let AX = null, AN = {};
+let curProbeGains = { tL: 0, tR: 0 };
+
+async function initAudioCtx() {
+  AX = new (window.AudioContext || window.webkitAudioContext)();
+  if (AX.state === 'suspended') await AX.resume();
+  logSes('audio_init', { sampleRate: AX.sampleRate, outputLatency: AX.outputLatency, baseLatency: AX.baseLatency, ua: navigator.userAgent });
+}
+
+// Real recorded sea/surf sound. Loaded via a plain <audio> element rather than fetch()+
+// decodeAudioData: fetch() of a sibling file is blocked under file:// (the "NetworkError"
+// you'd otherwise see when opening this page directly instead of through a server), but
+// <audio src="..."> is a media load, not a fetch, and works under file:// in every major
+// engine. The element is routed into the graph via createMediaElementSource.
+function createSeaAudioEl() {
+  const a = document.createElement('audio');
+  a.src = SEA_FILE; a.loop = true; a.preload = 'auto'; a.crossOrigin = 'anonymous';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  return a;
+}
+
+// The signal path is deliberately, strictly LINEAR: oscillator -> gain -> merger -> master ->
+// destination, with the sea summed in at master. There is no soft-clipper/limiter anywhere.
+//
+// An earlier version ran everything through a shared tanh waveshaper as a safety limiter, with
+// the probe at full scale. That was badly wrong on two counts, and it is why the probe did not
+// sound like a low sine at all:
+//   1. A full-scale sine through that curve comes out at 17.3% THD, with the 3rd harmonic only
+//      -15.5 dB below the fundamental. A 10 Hz probe therefore radiated a clearly audible 30 Hz
+//      tone at ~17% amplitude — i.e. the 10 Hz condition was contaminated with 30 Hz, one of the
+//      other test frequencies.
+//   2. Because the sea sound was summed in *before* that curve, the probe modulated the curve's
+//      local slope, amplitude-modulating the sea over a 23 dB range twice per probe cycle. That
+//      is an unmistakable audible warble at 20/40/60 Hz and it leaks both probe onset and side.
+// Both vanish if no nonlinearity is ever engaged, which the headroom budget above guarantees.
+async function buildGraph(seaDb) {
+  AN.master = AX.createGain(); AN.master.gain.value = 1.0; AN.master.connect(AX.destination);
+  AN.merger = AX.createChannelMerger(2); AN.merger.connect(AN.master);
+
+  // ── Sea ambience: real recording, looped, hard high-passed defensively ──
+  // Sums into master alongside the probe's merger output — Web Audio sums multiple inputs
+  // automatically, and the recording's own stereo image is preserved as-is.
+  const seaEl = createSeaAudioEl();
+  try { await seaEl.play(); } catch (e) { console.error('Sea sound failed to play:', e); }
+  const seaSrc = AX.createMediaElementSource(seaEl);
+  const hp1 = AX.createBiquadFilter(); hp1.type = 'highpass'; hp1.frequency.value = SEA_HP_HZ; hp1.Q.value = 0.707;
+  const hp2 = AX.createBiquadFilter(); hp2.type = 'highpass'; hp2.frequency.value = SEA_HP_HZ; hp2.Q.value = 0.707;
+  const seaGain = AX.createGain(); seaGain.gain.value = dbToLin(seaDb);
+  seaSrc.connect(hp1); hp1.connect(hp2); hp2.connect(seaGain); seaGain.connect(AN.master);
+  AN.seaEl = seaEl; AN.seaSrc = seaSrc; AN.seaGain = seaGain;
+
+  // ── PROBE oscillator with per-ear gain nodes ──
+  AN.probeOsc = AX.createOscillator(); AN.probeOsc.type = 'sine'; AN.probeOsc.frequency.value = 20;
+  AN.probeGainL = AX.createGain(); AN.probeGainL.gain.value = 0;
+  AN.probeGainR = AX.createGain(); AN.probeGainR.gain.value = 0;
+  AN.probeOsc.connect(AN.probeGainL); AN.probeOsc.connect(AN.probeGainR);
+  AN.probeGainL.connect(AN.merger, 0, 0); AN.probeGainR.connect(AN.merger, 0, 1);
+  AN.probeOsc.start();
+}
+
+function hannCurve(N, rising) {
+  const c = new Float32Array(N);
+  for (let i = 0; i < N; i++) c[i] = rising ? 0.5 * (1 - Math.cos(Math.PI * i / (N - 1))) : 0.5 * (1 + Math.cos(Math.PI * i / (N - 1)));
+  return c;
+}
+const HANN_N = 64, HANN_RISE = hannCurve(HANN_N, true), HANN_FALL = hannCurve(HANN_N, false);
+
+// Frequency random walk for the 'jitter' arm. The entire walk is drawn from the seeded PRNG and
+// scheduled on the AudioParam up front, so it needs no timers during the trial and replays exactly
+// from the session seed. Glides are linear ramps, so there is never a discontinuity to click on.
+// Both arms start at the centre frequency, so trial onset sounds identical either way.
+function scheduleJitter(centreHz, startTime, spanS) {
+  const plan = [];
+  let t = startTime;
+  AN.probeOsc.frequency.setValueAtTime(centreHz, t);
+  while (t < startTime + spanS) {
+    t += JITTER_SEG_MIN_S + SES.prng() * (JITTER_SEG_MAX_S - JITTER_SEG_MIN_S);
+    const target = centreHz * (1 + (SES.prng() * 2 - 1) * JITTER_DEPTH);
+    AN.probeOsc.frequency.linearRampToValueAtTime(target, t);
+    plan.push({ at: +(t - startTime).toFixed(2), hz: +target.toFixed(2) });
+  }
+  return plan;
+}
+
+// ear ∈ 'left' | 'right' | 'both' | 'anti' (anti = right channel phase-inverted).
+// mode ∈ 'fixed' | 'jitter'.
+// Amplitude is the headroom budget's leftover — as loud as possible while keeping probe+sea
+// strictly below full scale, so the waveform stays an undistorted sine.
+function startProbe(freq, ear, mode) {
+  if (!AX) return { tL: 0, tR: 0, jitterPlan: null };
+  const now = AX.currentTime;
+  SES.probeFreq = freq;
+  SES.probeStartAudio = now;
+  const lin = SES.probeLin;
+  const tL = (ear === 'left' || ear === 'both' || ear === 'anti') ? lin : 0;
+  const tR = (ear === 'right' || ear === 'both') ? lin : (ear === 'anti' ? -lin : 0);
+  AN.probeOsc.frequency.cancelScheduledValues(now);
+  let jitterPlan = null;
+  if (mode === 'jitter') jitterPlan = scheduleJitter(freq, now, MAIN_MAX_LISTEN_MS / 1000 + 1);
+  else AN.probeOsc.frequency.setValueAtTime(freq, now);
+  const fadeDur = Math.max(0.3, 2 / freq);
+  AN.probeGainL.gain.cancelScheduledValues(now);
+  AN.probeGainR.gain.cancelScheduledValues(now);
+  if (tL !== 0) AN.probeGainL.gain.setValueCurveAtTime(HANN_RISE.map(v => v * tL), now, fadeDur); else AN.probeGainL.gain.setValueAtTime(0, now);
+  if (tR !== 0) AN.probeGainR.gain.setValueCurveAtTime(HANN_RISE.map(v => v * tR), now, fadeDur); else AN.probeGainR.gain.setValueAtTime(0, now);
+  return { tL, tR, jitterPlan };
+}
+
+function stopProbe(tL, tR) {
+  if (!AX) return;
+  const now = AX.currentTime, freq = SES.probeFreq || 20, period = 1 / freq;
+  const elapsed = now - SES.probeStartAudio;
+  const nextBoundary = Math.ceil(elapsed / period) * period + SES.probeStartAudio;
+  const fadeStart = Math.max(now + 0.005, nextBoundary), fadeDur = Math.max(0.3, 2 / freq);
+  AN.probeGainL.gain.cancelScheduledValues(now);
+  AN.probeGainR.gain.cancelScheduledValues(now);
+  const preFade = Math.max(now + 0.001, fadeStart - 1 / (AX.sampleRate || 44100));
+  if (tL !== 0) { AN.probeGainL.gain.setValueAtTime(tL, preFade); AN.probeGainL.gain.setValueCurveAtTime(HANN_FALL.map(v => v * tL), fadeStart, fadeDur); }
+  else AN.probeGainL.gain.setValueAtTime(0, now);
+  if (tR !== 0) { AN.probeGainR.gain.setValueAtTime(tR, preFade); AN.probeGainR.gain.setValueCurveAtTime(HANN_FALL.map(v => v * tR), fadeStart, fadeDur); }
+  else AN.probeGainR.gain.setValueAtTime(0, now);
+  AN.probeGainL.gain.setValueAtTime(0, fadeStart + fadeDur + 0.02);
+  AN.probeGainR.gain.setValueAtTime(0, fadeStart + fadeDur + 0.02);
+}
+function stopProbeCur() { stopProbe(curProbeGains.tL, curProbeGains.tR); curProbeGains = { tL: 0, tR: 0 }; }
+function silenceAllNow() {
+  if (!AX) return;
+  const now = AX.currentTime;
+  [AN.probeGainL, AN.probeGainR, AN.seaGain].forEach(g => { if (!g) return; g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(0, now); });
+}
+function destroyAudio() {
+  silenceAllNow();
+  if (AN.seaEl) { try { AN.seaEl.pause(); } catch (e) {} AN.seaEl.remove(); }
+  if (AX) { AX.close().catch(() => {}); AX = null; }
+  AN = {};
+}
+
+// ── Isolated sea-sound preview (config screen, before the real session starts) ──
+let previewAX = null, previewNodes = null;
+async function toggleSeaPreview() {
+  const btn = el('btn-preview-sea');
+  if (previewAX) { stopSeaPreview(); return; }
+  btn.disabled = true; btn.textContent = '⏳…';
+  try {
+    previewAX = new (window.AudioContext || window.webkitAudioContext)();
+    if (previewAX.state === 'suspended') await previewAX.resume();
+    const seaDb = +el('cfg-seadb').value;
+    const seaEl = createSeaAudioEl();
+    await seaEl.play();
+    const src = previewAX.createMediaElementSource(seaEl);
+    const hp1 = previewAX.createBiquadFilter(); hp1.type = 'highpass'; hp1.frequency.value = SEA_HP_HZ;
+    const hp2 = previewAX.createBiquadFilter(); hp2.type = 'highpass'; hp2.frequency.value = SEA_HP_HZ;
+    const g = previewAX.createGain(); g.gain.value = 0;
+    src.connect(hp1); hp1.connect(hp2); hp2.connect(g); g.connect(previewAX.destination);
+    g.gain.setTargetAtTime(dbToLin(seaDb), previewAX.currentTime, 0.2);
+    previewNodes = { el: seaEl, src, g };
+    btn.disabled = false; btn.textContent = '⏸ Stop';
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '🔊 Preview';
+    alert('Preview failed: ' + err.message);
+    if (previewAX) { previewAX.close().catch(() => {}); previewAX = null; }
+  }
+}
+function stopSeaPreview() {
+  if (previewNodes) {
+    const now = previewAX.currentTime;
+    previewNodes.g.gain.cancelScheduledValues(now);
+    previewNodes.g.gain.setTargetAtTime(0, now, 0.15);
+    const nodes = previewNodes, ax = previewAX;
+    setTimeout(() => {
+      try { nodes.el.pause(); } catch (e) {}
+      nodes.el.remove();
+      ax?.close().catch(() => {});
+    }, 350);
+    previewAX = null; previewNodes = null;
+  } else if (previewAX) { previewAX.close().catch(() => {}); previewAX = null; }
+  const btn = el('btn-preview-sea');
+  if (btn) { btn.textContent = '🔊 Preview'; btn.disabled = false; }
+}
+
+// ── Isolated probe check (config screen) ── plays one probe frequency alone, in its own context,
+// with nothing else in the path. Gives a direct A/B against an external tone generator.
+let probeAX = null, probeNodes = null, probeCheckFreq = null;
+async function toggleProbeCheck(freq) {
+  const wasFreq = probeCheckFreq;
+  if (probeAX) stopProbeCheck();
+  if (wasFreq === freq) return;            // tapping the one that's already playing just stops it
+  try {
+    probeAX = new (window.AudioContext || window.webkitAudioContext)();
+    if (probeAX.state === 'suspended') await probeAX.resume();
+    const lin = probeLinFor(+el('cfg-seadb').value);
+    const osc = probeAX.createOscillator(); osc.type = 'sine'; osc.frequency.value = freq;
+    const g = probeAX.createGain(); g.gain.value = 0;
+    osc.connect(g); g.connect(probeAX.destination);
+    osc.start();
+    g.gain.setTargetAtTime(lin, probeAX.currentTime, Math.max(0.05, 2 / freq));
+    probeNodes = { osc, g }; probeCheckFreq = freq;
+  } catch (err) {
+    stopProbeCheck();
+    alert('Probe check failed: ' + err.message);
+  }
+  updateProbeCheckUI();
+}
+function stopProbeCheck() {
+  if (probeNodes) {
+    const now = probeAX.currentTime;
+    probeNodes.g.gain.cancelScheduledValues(now);
+    probeNodes.g.gain.setTargetAtTime(0, now, 0.05);
+    const nodes = probeNodes, ax = probeAX;
+    setTimeout(() => { try { nodes.osc.stop(); } catch (e) {} ax.close().catch(() => {}); }, 250);
+  } else if (probeAX) { probeAX.close().catch(() => {}); }
+  probeAX = null; probeNodes = null; probeCheckFreq = null;
+  updateProbeCheckUI();
+}
+function updateProbeCheckUI() {
+  FREQS.forEach(f => { const b = el('btn-probe-' + f); if (b) b.textContent = (probeCheckFreq === f ? '⏸ ' : '▶ ') + f + ' Hz'; });
+}
+
+// ══════════════════════════ UI HELPERS ══════════════════════════
+function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); el(id).classList.add('active'); }
+function showOverlay(id) { el(id).classList.add('vis'); }
+function hideOverlay(id) { el(id).classList.remove('vis'); }
+function setPhase(cls, txt) { const box = el('phase-box'); box.className = cls; box.textContent = txt; }
+
+function updateSeaLabel() {
+  const db = +el('cfg-seadb').value;
+  const qual = db <= -30 ? 'very quiet' : db <= -22 ? 'quiet' : db <= -14 ? 'moderate' : 'loud';
+  el('sea-label').textContent = `${db} dBFS · ${qual} → probe ${linToDb(probeLinFor(db)).toFixed(1)} dBFS`;
+}
+function updateEstimate() {
+  const total = +el('cfg-trials').value || 36;
+  const perCell = Math.floor(total / (MODES.length * AMBIENTS.length));   // remainder trials dropped to keep cells equal
+  const used = perCell * MODES.length * AMBIENTS.length;
+  const nTrials = used * 1.3;                     // +30% for expected repeats
+  const totalMin = Math.round((nTrials * 22) / 60);
+  el('estimate-txt').textContent = `${perCell}/cell (${used} of ${total} used) at ${el('cfg-freq').value} Hz — ` +
+    `${perCell * 2} steady, ${perCell * 2} drifting; ${perCell * 2} sea, ${perCell * 2} clean · ` +
+    `~${totalMin} min total (~${Math.round(nTrials)} trials incl. repeats)`;
+}
+document.querySelectorAll('.safety-cb').forEach(cb => cb.addEventListener('change', () => {
+  el('btn-start').disabled = !Array.from(document.querySelectorAll('.safety-cb')).every(c => c.checked);
+}));
+updateSeaLabel(); updateEstimate();
+
+// ══════════════════════════ MAIN TEST ══════════════════════════
+// Fisher-Yates using the session's seeded PRNG, so the whole trial order stays reproducible.
+function shuffleInPlace(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(SES.prng() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// Fully balanced rather than independently drawn per trial: the previous random draw left the
+// frequency cells lopsided (5 vs 14 trials) and made the comparisons weaker than the session
+// length deserved. Mode × ambient is a full 2×2 crossed design with equal cell sizes, and
+// laterality is balanced inside each of the 4 cells — so neither the mode nor the ambient
+// marginal comparison is ever confounded by an uneven ear mix or by each other.
+function buildTrialQueue() {
+  const total = +el('cfg-trials').value || 36;
+  const freq = +el('cfg-freq').value || 20;
+  const perCell = Math.floor(total / (MODES.length * AMBIENTS.length));
+  const q = [];
+  MODES.forEach(mode => AMBIENTS.forEach(ambient => {
+    const ears = [];
+    while (ears.length < perCell) ears.push(...shuffleInPlace(EARS.slice()));
+    ears.slice(0, perCell).forEach(ear => q.push({ freq, ear, mode, ambient, isRepeat: false }));
+  }));
+  return shuffleInPlace(q);
+}
+
+// Ramps the sea sound in or out over AMBIENT_XFADE_S — click-free, and independent of whatever
+// the sea sound's own waveform is doing at that instant. The level then holds through the
+// response and washout phases of that trial; the next trial's call ramps it again as needed
+// (a no-op ramp if two consecutive trials share the same ambient condition). A repeat trial
+// always reuses its original trial's ambient condition, since it's re-testing the exact same
+// condition, not a fresh random draw.
+function setAmbientFor(trial) {
+  if (!AX || !AN.seaGain) return;
+  const now = AX.currentTime;
+  const target = trial.ambient === 'sea' ? dbToLin(SES.seaDb) : 0;
+  AN.seaGain.gain.cancelScheduledValues(now);
+  AN.seaGain.gain.setTargetAtTime(target, now, AMBIENT_XFADE_S / 3);
+}
+
+// A hold-while-unstable button was tried here and dropped: real oscillation can flicker between
+// stable/unstable fast enough (~2Hz) to make pressing awkward, and the act of holding a button
+// down appears to alter the stability perception itself — an artefact worse than the ceiling
+// effect it was meant to fix. Back to the plain 4-level scale as the only outcome measure.
+let statCounts = { asymptomatic: 0, full: 0, temporary: 0, none: 0, rep: 0 };
+function bumpStat(resp, isRepeat) {
+  if (isRepeat) statCounts.rep++;
+  if (resp != null && statCounts[resp] != null) statCounts[resp]++;
+  el('stat-asymptomatic').textContent = statCounts.asymptomatic;
+  el('stat-full').textContent = statCounts.full;
+  el('stat-temporary').textContent = statCounts.temporary;
+  el('stat-none').textContent = statCounts.none;
+  el('stat-rep').textContent = statCounts.rep;
+}
+
+async function runMainTrial(trial, n, total) {
+  showScreen('s-main');
+  el('main-trial-n').textContent = n; el('main-trial-total').textContent = total;
+  // Deliberately no on-screen hint of which condition this is (mode/ambient) — even a
+  // plain-text tag is a way of telling the participant what's expected of them, which is
+  // exactly what blinding is supposed to prevent, regardless of whether it's scrollable away.
+  setPhase('ph-probe', 'Listening… try to compensate if needed, then rate below');
+  el('sev-buttons').style.visibility = 'hidden';
+  setAmbientFor(trial);
+  await sleep(AMBIENT_XFADE_S * 1000); checkAbort();   // let the sea ramp settle before the probe starts
+  curProbeGains = startProbe(trial.freq, trial.ear, trial.mode);
+  logSes('trial_probe_start', { n, freq: trial.freq, ear: trial.ear, mode: trial.mode, ambient: trial.ambient, isRepeat: trial.isRepeat, repeatOf: trial.repeatOf });
+
+  await sleep(MAIN_MIN_LISTEN_MS); checkAbort();
+  el('sev-buttons').style.visibility = 'visible';
+  const respKey = await withTimeout(waitForChoice(['sev-1', 'sev-2', 'sev-3', 'sev-4'], 0, el('main-wait')), MAIN_MAX_LISTEN_MS - MAIN_MIN_LISTEN_MS, 'timeout');
+  checkAbort();
+  el('sev-buttons').style.visibility = 'hidden';
+  const response = respKey === 'timeout' ? null : respKey;
+  logSes('trial_response', { n, response, timeout: respKey === 'timeout' });
+
+  stopProbeCur();
+  setPhase('ph-wash', trial.ambient === 'sea' ? 'Washout — sea sound only, probe is off' : 'Washout — silence, probe is off');
+  const washMs = WASHOUT_MIN_MS + SES.prng() * WASHOUT_MAX_MS;
+  // The guess is asked right away, in parallel with the washout timer, rather than after it:
+  // waiting serves no purpose (the washout gate is a fixed physiological pause, not a response
+  // deadline) and only makes the guess less accurate by forcing a 5s+ memory hold on which side
+  // it was. logSes fires the moment the answer comes in, so the timestamp reflects when it was
+  // actually given, not when the washout happened to finish.
+  const guessPromise = showEarGuess().then(g => { logSes('trial_earguess', { n, actualEar: trial.ear, guess: g }); return g; });
+  await sleep(washMs); checkAbort();
+  const guess = await guessPromise;
+  checkAbort();
+
+  bumpStat(response, trial.isRepeat);
+  return Object.assign({}, trial, { n, response, earGuess: guess, timeout: respKey === 'timeout' });
+}
+
+function showEarGuess() {
+  showOverlay('guess-overlay');
+  return waitForChoice(['guess-left', 'guess-right', 'guess-unsure']).then(v => { hideOverlay('guess-overlay'); return v; });
+}
+
+async function runMainTest() {
+  const queue = buildTrialQueue();
+  let i = 0, n = 1;
+  while (i < queue.length) {
+    checkAbort();
+    const trial = queue[i];
+    const done = await runMainTrial(trial, n, queue.length);
+    n++;
+    SES.trials.push(done);
+    if ((done.response === 'temporary' || done.response === 'none') && !done.isRepeat) {
+      queue.splice(i + 1, 0, { freq: done.freq, ear: done.ear, mode: done.mode, ambient: done.ambient, isRepeat: true, repeatOf: done.n });
+    }
+    i++;
+  }
+}
+
+// ══════════════════════════ ORCHESTRATION ══════════════════════════
+// Every run mutates ABORTED, abortHandlers, SES.log/trials and statCounts. None of that was
+// ever reset between sessions, so: (a) once STOP had been pressed once, ABORTED stayed true
+// forever and every later "Begin" click aborted instantly before the first trial, falling
+// straight through to finishSession() with the *previous* session's stale SES.trials/log —
+// i.e. exactly "a new attempt just shows the last results"; (b) even without ever pressing
+// STOP, SES.trials/log simply accumulated across runs instead of starting fresh.
+function resetSessionState() {
+  ABORTED = false;
+  abortHandlers = [];
+  SES = { seed: 0, prng: null, startWall: 0, log: [], trials: [], seaDb: -18, probeLin: probeLinFor(-18) };
+  statCounts = { asymptomatic: 0, full: 0, temporary: 0, none: 0, rep: 0 };
+  ['stat-asymptomatic', 'stat-full', 'stat-temporary', 'stat-none', 'stat-rep'].forEach(id => { el(id).textContent = '0'; });
+}
+
+async function handleStart() {
+  resetSessionState();
+  el('btn-start').disabled = true; el('btn-start').textContent = 'Starting…';
+  stopSeaPreview(); stopProbeCheck();
+  SES.seed = (Date.now() ^ 0x9e3779b9) >>> 0;
+  SES.prng = mulberry32(SES.seed);
+  SES.startWall = performance.now();
+  SES.seaDb = +el('cfg-seadb').value;
+  SES.probeLin = probeLinFor(SES.seaDb);
+  logSes('levels', { seaDb: SES.seaDb, probeLin: SES.probeLin, probeDbfs: +linToDb(SES.probeLin).toFixed(2),
+                     freq: +el('cfg-freq').value, jitterDepth: JITTER_DEPTH });
+  try {
+    await initAudioCtx();
+    await buildGraph(SES.seaDb);
+    try { if (navigator.wakeLock) await navigator.wakeLock.request('screen'); } catch (e) {}
+    await runMainTest();
+  } catch (e) {
+    if (e.message !== 'SESSION_ABORTED') console.error(e);
+  } finally {
+    finishSession();
+  }
+}
+
+function emergencyStop() {
+  triggerAbort();
+  silenceAllNow();
+  logSes('emergency_stop', {});
+}
+
+function finishSession() {
+  silenceAllNow();
+  destroyAudio();   // fully close the context — otherwise the sea sound loops on into the report screen
+  buildReport();
+  showScreen('s-report');
+  el('btn-start').textContent = '▶ Begin';
+  el('btn-start').disabled = !Array.from(document.querySelectorAll('.safety-cb')).every(c => c.checked);
+}
+
+// "↺ New session" button on the report screen — goes back to the intro screen with a fully
+// reset state so a fresh session can be started without reloading the page.
+function startNewSession() {
+  resetSessionState();
+  el('btn-start').textContent = '▶ Begin';
+  el('btn-start').disabled = !Array.from(document.querySelectorAll('.safety-cb')).every(c => c.checked);
+  showScreen('s-intro');
+}
+
+// ══════════════════════════ REPORT ══════════════════════════
+function wilsonCI(k, n, z = 1.96) {
+  if (n === 0) return { p: null, lo: null, hi: null };
+  const p = k / n, z2 = z * z;
+  const denom = 1 + z2 / n;
+  const centre = p + z2 / (2 * n);
+  const adj = z * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n);
+  return { p, lo: Math.max(0, (centre - adj) / denom), hi: Math.min(1, (centre + adj) / denom) };
+}
+function pct(v) { return v == null ? '—' : (v * 100).toFixed(1) + '%'; }
+
+const RESP_LABEL = { asymptomatic: 'Asymptomatic', full: 'Full comp.', temporary: 'Temporary comp.', none: 'No comp.' };
+
+function buildReport() {
+  let html = '';
+  const real = SES.trials.filter(t => !t.isRepeat);
+  const reps = SES.trials.filter(t => t.isRepeat);
+
+  const MODE_LABEL = { fixed: 'Steady tone', jitter: 'Drifting tone' };
+
+  // ── Headline: the one manipulated variable. Everything else (frequency, level, sea sound,
+  // timing) is identical between these two rows, and laterality is balanced inside each, so a
+  // gap here is attributable to predictability alone.
+  html += `<div class="rpt-section"><h3>Steady vs. drifting tone (primary outcome)</h3><table><tr>
+    <th>Mode</th><th>n</th><th>Asymptomatic</th><th>Full comp.</th><th>Temporary comp.</th><th>No comp.</th>
+    <th>Symptomatic rate</th><th>95% CI</th></tr>`;
+  for (const m of MODES) {
+    const rows = real.filter(t => t.mode === m);
+    const k = rows.filter(t => t.response && t.response !== 'asymptomatic').length;
+    const c = wilsonCI(k, rows.length);
+    html += `<tr><td>${MODE_LABEL[m]}</td><td>${rows.length}</td>
+      <td>${rows.filter(t => t.response === 'asymptomatic').length}</td>
+      <td>${rows.filter(t => t.response === 'full').length}</td>
+      <td>${rows.filter(t => t.response === 'temporary').length}</td>
+      <td>${rows.filter(t => t.response === 'none').length}</td>
+      <td>${pct(c.p)}</td><td>${c.p == null ? '—' : `[${pct(c.lo)}, ${pct(c.hi)}]`}</td></tr>`;
+  }
+  html += `</table><p class="small mt">This comparison pools over both ambient conditions equally
+    (balanced 2×2 design), so it is unaffected by whatever the sea sound does or doesn't do.</p></div>`;
+
+  // ── Secondary main effect: does the sea sound itself change anything? Same n per row as the
+  // primary table (18 vs 18 at the default 36 trials) because ambient is crossed and balanced
+  // the same way mode is — this comparison is exactly as powered as the primary one.
+  const AMB_LABEL = { sea: 'With sea sound', none: 'Clean (no ambient)' };
+  html += `<div class="rpt-section"><h3>Sea sound vs. clean probe (secondary main effect)</h3><table><tr>
+    <th>Ambient</th><th>n</th><th>Asymptomatic</th><th>Full comp.</th><th>Temporary comp.</th><th>No comp.</th>
+    <th>Symptomatic rate</th><th>95% CI</th></tr>`;
+  for (const amb of AMBIENTS) {
+    const rows = real.filter(t => t.ambient === amb);
+    const k = rows.filter(t => t.response && t.response !== 'asymptomatic').length;
+    const c = wilsonCI(k, rows.length);
+    html += `<tr><td>${AMB_LABEL[amb]}</td><td>${rows.length}</td>
+      <td>${rows.filter(t => t.response === 'asymptomatic').length}</td>
+      <td>${rows.filter(t => t.response === 'full').length}</td>
+      <td>${rows.filter(t => t.response === 'temporary').length}</td>
+      <td>${rows.filter(t => t.response === 'none').length}</td>
+      <td>${pct(c.p)}</td><td>${c.p == null ? '—' : `[${pct(c.lo)}, ${pct(c.hi)}]`}</td></tr>`;
+  }
+  html += `</table><p class="small mt">If this looks different from the mode comparison above, treat the mode
+    result as still valid (it's balanced against ambient either way) but noisier than it would be with ambient
+    fixed — worth a follow-up session with ambient held constant to sharpen the mode estimate.</p></div>`;
+
+  // ── Exploratory only: does ambient change the *size* of the predictability effect? Cell sizes
+  // here are a quarter of the session (≈9 at the default 36 trials), so treat this as a first
+  // look, not a test — it needs a much larger session (or several pooled sessions) to resolve.
+  html += `<div class="rpt-section"><h3>Mode × ambient interaction (exploratory — cells are small, do not over-read)</h3><table><tr>
+    <th>Mode</th><th>Ambient</th><th>n</th><th>Symptomatic</th><th>Rate</th></tr>`;
+  for (const m of MODES) for (const amb of AMBIENTS) {
+    const rows = real.filter(t => t.mode === m && t.ambient === amb);
+    const k = rows.filter(t => t.response && t.response !== 'asymptomatic').length;
+    html += `<tr><td>${MODE_LABEL[m]}</td><td>${AMB_LABEL[amb]}</td><td>${rows.length}</td>
+      <td>${k}/${rows.length}</td><td>${pct(rows.length ? k / rows.length : null)}</td></tr>`;
+  }
+  html += `</table></div>`;
+
+  html += `<div class="rpt-section"><h3>By laterality (first presentations, n=${real.length})</h3><table><tr>
+    <th>Laterality</th><th>Mode</th><th>n</th><th>Symptomatic</th></tr>`;
+  for (const e of EARS) for (const m of MODES) {
+    const rows = real.filter(t => t.ear === e && t.mode === m);
+    if (!rows.length) continue;
+    const k = rows.filter(t => t.response && t.response !== 'asymptomatic').length;
+    html += `<tr><td>${e}</td><td>${MODE_LABEL[m]}</td><td>${rows.length}</td><td>${k}/${rows.length}</td></tr>`;
+  }
+  html += `</table></div>`;
+
+  if (reps.length) {
+    html += `<div class="rpt-section"><h3>Immediate repeats (temporary/no compensation on first presentation, n=${reps.length})</h3><table><tr>
+      <th>Laterality</th><th>Mode</th><th>Ambient</th><th>Repeat response</th></tr>`;
+    reps.forEach(t => {
+      html += `<tr><td>${t.ear}</td><td>${MODE_LABEL[t.mode]}</td><td>${AMB_LABEL[t.ambient] ?? '—'}</td>
+        <td>${RESP_LABEL[t.response] ?? '—'}</td></tr>`;
+    });
+    html += `</table></div>`;
+  }
+
+  // Laterality-guess accuracy — only meaningful (has a ground-truth side) for left/right trials.
+  const lr = SES.trials.filter(t => t.ear === 'left' || t.ear === 'right');
+  const lrGuessed = lr.filter(t => t.earGuess === 'left' || t.earGuess === 'right');
+  const lrCorrect = lrGuessed.filter(t => t.earGuess === t.ear).length;
+  const lrCi = wilsonCI(lrCorrect, lrGuessed.length);
+  html += `<div class="rpt-section"><h3>Laterality-guess accuracy — left/right trials only (chance = 50%)</h3><table><tr>
+    <th>n guessed</th><th>n can't-tell</th><th>Correct</th><th>95% CI</th></tr>
+    <tr><td>${lrGuessed.length}</td><td>${lr.length - lrGuessed.length}</td><td>${pct(lrCi.p)}</td>
+    <td>${lrCi.p == null ? '—' : `[${pct(lrCi.lo)}, ${pct(lrCi.hi)}]`}</td></tr></table></div>`;
+
+  // Guess distribution for both/anti trials — no ground-truth side, just what it felt like.
+  html += `<div class="rpt-section"><h3>Guess distribution — both / anti-phase trials (no correct answer, informational)</h3><table><tr>
+    <th>Laterality</th><th>n</th><th>Guessed left</th><th>Guessed right</th><th>Can't tell/both</th></tr>`;
+  for (const e of ['both', 'anti']) {
+    const rows = SES.trials.filter(t => t.ear === e);
+    if (!rows.length) continue;
+    html += `<tr><td>${e}</td><td>${rows.length}</td><td>${rows.filter(t => t.earGuess === 'left').length}</td>
+      <td>${rows.filter(t => t.earGuess === 'right').length}</td><td>${rows.filter(t => t.earGuess === 'unsure').length}</td></tr>`;
+  }
+  html += `</table></div>`;
+
+  // Last session showed response times halving from start to finish, so drift across the session
+  // is real and worth watching: it can masquerade as a mode effect if the randomisation happens to
+  // load one arm into one half. Thirds are balanced by construction, so a big gap here is fatigue
+  // or learning, not the stimulus.
+  html += `<div class="rpt-section"><h3>Drift across the session (thirds, first presentations)</h3><table><tr>
+    <th>Third</th><th>n</th><th>Symptomatic</th><th>Steady / drifting split</th></tr>`;
+  const third = Math.ceil(real.length / 3) || 1;
+  for (let i = 0; i < 3; i++) {
+    const rows = real.slice(i * third, (i + 1) * third);
+    if (!rows.length) continue;
+    const k = rows.filter(t => t.response && t.response !== 'asymptomatic').length;
+    html += `<tr><td>${['First', 'Middle', 'Last'][i]}</td><td>${rows.length}</td><td>${k}/${rows.length}</td>
+      <td>${rows.filter(t => t.mode === 'fixed').length} / ${rows.filter(t => t.mode === 'jitter').length}</td></tr>`;
+  }
+  html += `</table></div>`;
+
+  html += `<p class="small">Session seed: ${SES.seed.toString(16).toUpperCase()} ·
+    Probe: ${real.length ? real[0].freq : '—'} Hz, ±${(JITTER_DEPTH * 100).toFixed(0)}% drift on the jitter arm ·
+    Sea volume when on: ${SES.seaDb} dBFS (balanced on/off per trial, crossed with mode) ·
+    Probe level: ${linToDb(SES.probeLin).toFixed(1)} dBFS (pure sine, linear path, no limiter, same level whether ambient is on or off) ·
+    Trials logged: ${SES.trials.length} · Started: ${new Date(Date.now() - (performance.now() - SES.startWall)).toLocaleString()}</p>`;
+
+  el('report-body').innerHTML = html;
+}
+
+function dlFile(name, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+// One row per completed trial rather than per log event — a flat trial table is what any
+// downstream analysis actually wants.
+function downloadCSV() {
+  const cols = ['n', 'freq', 'ear', 'mode', 'ambient', 'response', 'earGuess', 'isRepeat', 'repeatOf', 'timeout'];
+  const rows = [cols.join(',')];
+  SES.trials.forEach(t => { rows.push(cols.map(c => `"${t[c] ?? ''}"`).join(',')); });
+  dlFile('scds_iphone_trials.csv', rows.join('\n'), 'text/csv');
+}
+function downloadJSON() {
+  dlFile('scds_iphone_session.json', JSON.stringify({
+    seed: SES.seed, seaDb: SES.seaDb, probeLin: SES.probeLin, probeDbfs: +linToDb(SES.probeLin).toFixed(2),
+    freq: SES.trials.length ? SES.trials[0].freq : null,
+    jitterDepth: JITTER_DEPTH, jitterSegS: [JITTER_SEG_MIN_S, JITTER_SEG_MAX_S],
+    trials: SES.trials, log: SES.log
+  }, null, 2), 'application/json');
+}
+</script>
+</body>
+</html>

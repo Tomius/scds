@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>SCDS Threshold Staircase — iPhone</title>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --border: #30363d; --text: #e6edf3;
+  --muted: #8b949e; --accent: #2ea043; --warn: #d29922; --danger: #f85149; --probe: #388bfd;
+  --font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body {
+  font-family: var(--font); background: var(--bg); color: var(--text);
+  min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+  padding-bottom: 50px; -webkit-user-select: none; user-select: none;
+}
+.screen { display: none; width: 100%; max-width: 520px; padding: 20px 16px; flex-direction: column; gap: 16px; }
+.screen.active { display: flex; }
+h1 { font-size: 1.3rem; font-weight: 700; }
+h2 { font-size: 1.0rem; font-weight: 600; color: var(--muted); }
+p { line-height: 1.55; font-size: 0.92rem; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.btn {
+  padding: 14px 18px; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700;
+  cursor: pointer; transition: opacity .15s; font-family: var(--font); width: 100%;
+}
+.btn:disabled { opacity: .32; cursor: not-allowed; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-secondary { background: var(--border); color: var(--text); }
+.btn:not(:disabled):active { opacity: .75; }
+.checklist { display: flex; flex-direction: column; gap: 11px; }
+.check-item { display: flex; align-items: flex-start; gap: 10px; line-height: 1.5; font-size: 0.9rem; }
+.check-item input[type=checkbox] { margin-top: 3px; width: 20px; height: 20px; accent-color: var(--accent); flex-shrink: 0; }
+label.field { font-size: 0.8rem; color: var(--muted); display: block; margin-bottom: 4px; }
+input[type=number], select {
+  background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  padding: 8px 10px; border-radius: 6px; font-size: 1rem; width: 100%; font-family: var(--font);
+}
+input[type=range] { width: 100%; accent-color: var(--probe); height: 28px; }
+.warn-box { background: #1e1300; border: 1px solid var(--warn); border-radius: 8px; padding: 14px; font-size: 0.86rem; line-height: 1.6; }
+.info-box { background: #0c1a2e; border: 1px solid var(--probe); border-radius: 8px; padding: 14px; font-size: 0.86rem; line-height: 1.6; }
+.small { font-size: 0.78rem; color: var(--muted); }
+.mono { font-family: monospace; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mt { margin-top: 8px; }
+hr { border: none; border-top: 1px solid var(--border); margin: 6px 0; }
+
+#btn-stop {
+  position: fixed; top: 10px; right: 10px; z-index: 1000; padding: 9px 15px;
+  background: var(--danger); color: #fff; border: none; border-radius: 8px;
+  font-size: 0.85rem; font-weight: 700; font-family: var(--font);
+}
+
+#phase-box {
+  font-size: 1.15rem; font-weight: 700; text-align: center; padding: 16px;
+  border-radius: 10px; background: var(--surface); border: 2px solid var(--border);
+  min-height: 60px; display: flex; align-items: center; justify-content: center;
+  transition: border-color .3s, color .3s;
+}
+#phase-box.ph-probe { border-color: var(--probe); color: var(--probe); }
+#phase-box.ph-wash { border-color: var(--warn); color: var(--warn); }
+#phase-box.ph-ready { border-color: var(--accent); color: var(--accent); }
+
+.wait-line { text-align: center; font-size: 0.85rem; color: var(--muted); min-height: 18px; }
+
+.resp-col { display: flex; flex-direction: column; gap: 10px; }
+.resp-btn {
+  padding: 16px 14px; font-size: 0.94rem; font-weight: 600; border: 1px solid var(--border);
+  border-left: 5px solid var(--border); background: var(--surface); color: var(--text);
+  border-radius: 8px; font-family: var(--font); text-align: left; cursor: pointer; line-height: 1.4;
+}
+.resp-btn:disabled { opacity: .3; }
+.resp-1 { border-left-color: var(--accent); }
+.resp-2 { border-left-color: var(--probe); }
+.resp-3 { border-left-color: var(--warn); }
+.resp-4 { border-left-color: var(--danger); }
+
+.stats-row { display: flex; gap: 14px; font-size: 0.78rem; color: var(--muted); flex-wrap: wrap; justify-content: center; }
+.stat-val { color: var(--text); font-weight: 700; }
+
+#guess-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.9); z-index: 600;
+  align-items: center; justify-content: center;
+}
+#guess-overlay.vis { display: flex; }
+.ov-card {
+  background: var(--surface); border: 2px solid var(--probe); border-radius: 14px;
+  padding: 22px; max-width: 420px; width: 92%; display: flex; flex-direction: column; gap: 14px;
+}
+.ov-card h3 { font-size: 1rem; color: var(--probe); }
+.ov-card p { font-size: 0.86rem; color: var(--muted); }
+.opt-col { display: flex; flex-direction: column; gap: 9px; }
+.opt-btn {
+  padding: 14px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+  font-size: 0.92rem; background: var(--bg); color: var(--text); font-family: var(--font); text-align: center;
+}
+.opt-btn:disabled { opacity: .3; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 6px; }
+th { background: var(--surface); padding: 6px 7px; text-align: left; border-bottom: 2px solid var(--border); }
+td { padding: 5px 7px; border-bottom: 1px solid var(--border); }
+.rpt-section { margin-bottom: 18px; }
+.rpt-section h3 { font-size: 0.9rem; color: var(--muted); margin-bottom: 6px; }
+</style>
+</head>
+<body>
+
+<button id="btn-stop" onclick="emergencyStop()">⏹ STOP</button>
+
+<!-- ═══════════════ SCREEN: INTRO ═══════════════ -->
+<div id="s-intro" class="screen active">
+  <h1>SCDS Threshold Staircase — iPhone</h1>
+  <div class="info-box">
+    Measures <strong>how loud the probe has to be before you lose full compensation</strong>, separately
+    for each ear, instead of hammering both ears at maximum and recording a category. The level is the
+    measurement here, so most trials sit near your threshold rather than at the ceiling — that makes the
+    session both gentler and more sensitive than the fixed-level design.<br><br>
+    Two staircases (left ear, right ear) run <strong>interleaved in random order</strong>. Answer
+    "can't fully compensate" and that ear's next tone gets <strong>quieter</strong>; answer anything
+    else and it gets <strong>louder</strong>. Each ear converges on its own 50% point, and the
+    difference between the two is a direct, numeric lateralisation measure in dB.<br><br>
+    A few <strong>silent catch trials</strong> are mixed in with no probe at all. They cost nothing and
+    they're what lets the report state a false-positive rate — without them, "I felt something" has no
+    baseline to be compared against.
+  </div>
+  <div class="warn-box">
+    <strong>⚠ Read before proceeding</strong><br><br>
+    This delivers low-frequency audio at full system volume that may provoke oscillopsia, imbalance,
+    nausea, or vertigo. Do not proceed if standing, near fall hazards, driving, or in an active severe
+    vestibular episode.<br><br>
+    <strong>Stop immediately</strong> with the red STOP button on pain, sharp tinnitus increase, or
+    disabling vertigo. Do not drive for at least 30 minutes afterwards.
+  </div>
+  <div class="card checklist" id="safety-checks">
+    <label class="check-item"><input type="checkbox" class="safety-cb"> I am seated or reclined in a safe location</label>
+    <label class="check-item"><input type="checkbox" class="safety-cb"> I am not in an active severe vestibular episode right now</label>
+    <label class="check-item"><input type="checkbox" class="safety-cb"> Earbuds are sealed in-canal (not loose, not open-fit)</label>
+    <label class="check-item"><input type="checkbox" class="safety-cb"> System volume is at maximum; Low Power Mode is off</label>
+    <label class="check-item"><input type="checkbox" class="safety-cb"> Auto-Lock is set to Never for this session; Do Not Disturb is on</label>
+  </div>
+  <div class="card">
+    <label class="field">Sea sound volume — plays continuously all session (measured twice as having no effect on the response, kept because it makes the test pleasant). A louder sea leaves less headroom, lowering the staircase's loudest available step.</label>
+    <input type="range" id="cfg-seadb" min="-36" max="-6" step="1" value="-18" oninput="updateSeaLabel()">
+    <div class="row" style="justify-content:space-between">
+      <span class="small" id="sea-label">-18 dBFS · moderate</span>
+      <button class="btn btn-secondary" id="btn-preview-sea" style="width:auto;padding:8px 14px;font-size:0.82rem" onclick="toggleSeaPreview()">🔊 Preview</button>
+    </div>
+  </div>
+  <div class="card">
+    <label class="field">Probe check — plays one probe tone on its own, no sea sound, at the staircase's maximum level</label>
+    <div class="row">
+      <button class="btn btn-secondary" id="btn-probe-10" style="width:auto;padding:10px 16px;font-size:0.85rem" onclick="toggleProbeCheck(10)">▶ 10 Hz</button>
+      <button class="btn btn-secondary" id="btn-probe-20" style="width:auto;padding:10px 16px;font-size:0.85rem" onclick="toggleProbeCheck(20)">▶ 20 Hz</button>
+      <button class="btn btn-secondary" id="btn-probe-30" style="width:auto;padding:10px 16px;font-size:0.85rem" onclick="toggleProbeCheck(30)">▶ 30 Hz</button>
+      <button class="btn btn-secondary" id="btn-probe-40" style="width:auto;padding:10px 16px;font-size:0.85rem" onclick="toggleProbeCheck(40)">▶ 40 Hz</button>
+      <button class="btn btn-secondary" id="btn-probe-60" style="width:auto;padding:10px 16px;font-size:0.85rem" onclick="toggleProbeCheck(60)">▶ 60 Hz</button>
+    </div>
+    <p class="small mt">A pure sine straight to the output — no limiter, no distortion. A/B this against a
+      known-good external tone generator to confirm the engine, your earbuds and iOS really are
+      reproducing the frequency before you commit to a session.</p>
+  </div>
+  <div class="card">
+    <label class="field">Probe frequency (20&nbsp;Hz recommended — 10&nbsp;Hz tested inert, 20 and 30 equally provocative)</label>
+    <select id="cfg-freq" onchange="updateEstimate()">
+      <option value="10">10 Hz</option>
+      <option value="20" selected>20 Hz</option>
+      <option value="30">30 Hz</option>
+      <option value="40">40 Hz</option>
+      <option value="60">60 Hz</option>
+    </select>
+  </div>
+  <div class="card">
+    <label class="field">Reversals to collect per ear — the staircase stops early once it has this many direction changes. More reversals means a tighter threshold but a longer session.</label>
+    <select id="cfg-reversals" onchange="updateEstimate()">
+      <option value="6">6 reversals (fastest, roughly ±3 dB)</option>
+      <option value="8" selected>8 reversals (recommended)</option>
+      <option value="10">10 reversals (tightest, longest)</option>
+    </select>
+  </div>
+  <div class="card">
+    <label class="field">Seconds of listening before the buttons unlock. Your median decision time last session was ~2s after the gate, so the gate — not your deliberation — sets the session length.</label>
+    <input type="number" id="cfg-gate" value="6" min="3" max="15" step="1" oninput="updateEstimate()">
+    <p class="small mt" id="estimate-txt"></p>
+  </div>
+  <button class="btn btn-primary" id="btn-start" disabled onclick="handleStart()">▶ Begin</button>
+</div>
+
+<!-- ═══════════════ SCREEN: MAIN TEST ═══════════════ -->
+<div id="s-main" class="screen">
+  <h2>Trial <span id="main-trial-n">1</span><span id="main-trial-total"></span></h2>
+  <div id="phase-box" class="ph-probe">Listening…</div>
+  <div class="wait-line" id="main-wait"></div>
+  <div class="resp-col" id="sev-buttons">
+    <button class="resp-btn resp-1" id="sev-1" data-val="asymptomatic">1 · Nothing at all — no symptom</button>
+    <button class="resp-btn resp-2" id="sev-2" data-val="full">2 · Symptom, but I can fully compensate</button>
+    <button class="resp-btn resp-3" id="sev-3" data-val="cannot">3 · Cannot fully compensate</button>
+  </div>
+  <div class="stats-row">
+    <span>Left reversals <span class="stat-val" id="stat-revL">0</span></span>
+    <span>Right reversals <span class="stat-val" id="stat-revR">0</span></span>
+    <span>Catch <span class="stat-val" id="stat-catch">0</span></span>
+  </div>
+</div>
+
+<!-- ═══════════════ SCREEN: REPORT ═══════════════ -->
+<div id="s-report" class="screen">
+  <h1>Session report</h1>
+  <div class="row">
+    <button class="btn btn-secondary" onclick="downloadCSV()">⬇ CSV</button>
+    <button class="btn btn-secondary" onclick="downloadJSON()">⬇ JSON</button>
+    <button class="btn btn-primary" onclick="startNewSession()">↺ New session</button>
+  </div>
+  <div id="report-body"></div>
+  <div class="warn-box small">
+    Uncalibrated self-experimentation tool. The probe is a pure sine on the selected channel(s),
+    summed with the sea sound so that the total always stays below full scale — no limiter or
+    soft-clipper is in the path, so no harmonic distortion is added. No absolute SPL is implied.
+    Not a diagnostic device.
+  </div>
+</div>
+
+<!-- ── Ear-guess overlay ── -->
+<div id="guess-overlay">
+  <div class="ov-card">
+    <h3>Which side?</h3>
+    <p>Best guess — this is scored separately and never affects your main result.</p>
+    <div class="opt-col">
+      <button class="opt-btn" id="guess-left" data-val="left">Left</button>
+      <button class="opt-btn" id="guess-right" data-val="right">Right</button>
+      <button class="opt-btn" id="guess-unsure" data-val="unsure">Can't tell / both</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ══════════════════════════ CONSTANTS ══════════════════════════
+const FREQS = [10, 20, 30, 40, 60];    // probe-check buttons only; the session frequency is configurable
+const STAIR_EARS = ['left', 'right'];  // one independent staircase per ear, interleaved at random
+
+// ── Staircase geometry (levels are dB relative to the maximum budgeted probe level) ──
+// 1-up/1-down on the binary "did full compensation fail", which converges on the 50% point.
+// Deliberately starting well below the ceiling: the walk-up costs a few trials but those trials
+// are quiet, and the previous fixed-level design showed 94% of max-level trials are symptomatic,
+// so starting at the top would just re-measure the ceiling at maximum discomfort.
+const STAIR_START_DB = -18;
+const STAIR_MIN_DB = -42, STAIR_MAX_DB = 0;
+const STAIR_STEP_COARSE = 6, STAIR_STEP_FINE = 3;  // fine step takes over after the 2nd reversal
+const STAIR_APPROACH_BOOST = 1.5;   // bigger up-steps while still walking up to the first reversal
+const STAIR_MAX_TRIALS = 18;        // per-ear hard cap, in case it never settles
+const THRESHOLD_FROM_LAST = 4;      // average this many final reversals for the threshold estimate
+const CATCH_TRIALS = 4;             // silent probes, randomly interspersed, to measure false positives
+
+const MAIN_MAX_LISTEN_MS = 45000;   // hard safety cap -> auto timeout
+// Shortened from 6-10s: oscillation was reported to stop immediately at probe offset every time,
+// so the long washout was pure dead time — it was eating ~7 of 21 minutes per session.
+const WASHOUT_MIN_MS = 3000, WASHOUT_MAX_MS = 2000;
+const SEA_HP_HZ = 180;                 // hard floor for ambient content, well clear of the 10-30Hz probe band
+const SEA_FILE = 'rmultimediaeu-ocean-waves-250310.mp3';   // must sit next to this HTML file
+
+function mulberry32(seed) {
+  return function () {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function el(id) { return document.getElementById(id); }
+function dbToLin(db) { return Math.pow(10, db / 20); }
+
+// Headroom budget. The probe and the sea sound are summed into the same channels, so their peaks
+// add. The probe therefore gets everything left over after the sea's peak, minus a small margin
+// for MP3-decoder and filter overshoot. Keeping the sum strictly below full scale is what allows
+// the signal path to stay perfectly linear — see the comment on buildGraph for why that matters.
+const PEAK_MARGIN = 0.02;
+function probeLinFor(seaDb) { return Math.max(0.2, 1 - dbToLin(seaDb) - PEAK_MARGIN); }
+function linToDb(lin) { return 20 * Math.log10(lin); }
+function sleepBase(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ══════════════════════════ ABORT / SLEEP (interruptible) ══════════════════════════
+let ABORTED = false;
+let abortHandlers = [];
+function triggerAbort() {
+  if (ABORTED) return;
+  ABORTED = true;
+  abortHandlers.slice().forEach(f => { try { f(); } catch (e) {} });
+}
+function sleep(ms) {
+  return new Promise(resolve => {
+    if (ABORTED) return resolve();
+    const t = setTimeout(finish, ms);
+    function finish() { cleanup(); resolve(); }
+    function cleanup() { clearTimeout(t); abortHandlers = abortHandlers.filter(f => f !== finish); }
+    abortHandlers.push(finish);
+  });
+}
+function checkAbort() { if (ABORTED) throw new Error('SESSION_ABORTED'); }
+
+// Wait for a click on any of `ids`. Each button carries data-val (or falls back to id).
+// If minMs > 0, the buttons are disabled and a countdown is shown in `waitEl` until minMs elapses.
+function waitForChoice(ids, minMs = 0, waitEl = null) {
+  return new Promise(resolve => {
+    if (ABORTED) return resolve('unsure');
+    let settled = false;
+    function settle(val) { if (settled) return; settled = true; cleanup(); resolve(val); }
+    function onClick(e) { settle(e.currentTarget.dataset.val ?? e.currentTarget.id); }
+    ids.forEach(id => { const b = el(id); if (minMs > 0) b.disabled = true; b.addEventListener('click', onClick); });
+    let iv = null;
+    function onAbort() { settle('unsure'); }
+    abortHandlers.push(onAbort);
+    if (minMs > 0) {
+      let remain = Math.ceil(minMs / 1000);
+      if (waitEl) waitEl.textContent = `You can respond in ${remain}s…`;
+      iv = setInterval(() => {
+        remain--;
+        if (waitEl) waitEl.textContent = remain > 0 ? `You can respond in ${remain}s…` : '';
+        if (remain <= 0) { clearInterval(iv); iv = null; ids.forEach(id => el(id).disabled = false); }
+      }, 1000);
+    }
+    function cleanup() {
+      ids.forEach(id => el(id).removeEventListener('click', onClick));
+      if (iv) clearInterval(iv);
+      if (waitEl) waitEl.textContent = '';
+      abortHandlers = abortHandlers.filter(f => f !== onAbort);
+    }
+  });
+}
+function withTimeout(promise, ms, fallback) {
+  return new Promise(resolve => {
+    let done = false;
+    const t = setTimeout(() => { if (!done) { done = true; resolve(fallback); } }, ms);
+    promise.then(v => { if (!done) { done = true; clearTimeout(t); resolve(v); } });
+  });
+}
+
+// ══════════════════════════ SESSION STATE ══════════════════════════
+let SES = { seed: 0, prng: null, startWall: 0, log: [], trials: [], seaDb: -18 };
+
+function logSes(type, data) {
+  SES.log.push(Object.assign({ t: performance.now() - SES.startWall, type }, data || {}));
+}
+
+// ══════════════════════════ AUDIO ENGINE ══════════════════════════
+let AX = null, AN = {};
+let curProbeGains = { tL: 0, tR: 0 };
+
+async function initAudioCtx() {
+  AX = new (window.AudioContext || window.webkitAudioContext)();
+  if (AX.state === 'suspended') await AX.resume();
+  logSes('audio_init', { sampleRate: AX.sampleRate, outputLatency: AX.outputLatency, baseLatency: AX.baseLatency, ua: navigator.userAgent });
+}
+
+// Real recorded sea/surf sound. Loaded via a plain <audio> element rather than fetch()+
+// decodeAudioData: fetch() of a sibling file is blocked under file:// (the "NetworkError"
+// you'd otherwise see when opening this page directly instead of through a server), but
+// <audio src="..."> is a media load, not a fetch, and works under file:// in every major
+// engine. The element is routed into the graph via createMediaElementSource.
+function createSeaAudioEl() {
+  const a = document.createElement('audio');
+  a.src = SEA_FILE; a.loop = true; a.preload = 'auto'; a.crossOrigin = 'anonymous';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  return a;
+}
+
+// The signal path is deliberately, strictly LINEAR: oscillator -> gain -> merger -> master ->
+// destination, with the sea summed in at master. There is no soft-clipper/limiter anywhere.
+//
+// An earlier version ran everything through a shared tanh waveshaper as a safety limiter, with
+// the probe at full scale. That was badly wrong on two counts, and it is why the probe did not
+// sound like a low sine at all:
+//   1. A full-scale sine through that curve comes out at 17.3% THD, with the 3rd harmonic only
+//      -15.5 dB below the fundamental. A 10 Hz probe therefore radiated a clearly audible 30 Hz
+//      tone at ~17% amplitude — i.e. the 10 Hz condition was contaminated with 30 Hz, one of the
+//      other test frequencies.
+//   2. Because the sea sound was summed in *before* that curve, the probe modulated the curve's
+//      local slope, amplitude-modulating the sea over a 23 dB range twice per probe cycle. That
+//      is an unmistakable audible warble at 20/40/60 Hz and it leaks both probe onset and side.
+// Both vanish if no nonlinearity is ever engaged, which the headroom budget above guarantees.
+async function buildGraph(seaDb) {
+  AN.master = AX.createGain(); AN.master.gain.value = 1.0; AN.master.connect(AX.destination);
+  AN.merger = AX.createChannelMerger(2); AN.merger.connect(AN.master);
+
+  // ── Sea ambience: real recording, looped, hard high-passed defensively ──
+  // Sums into master alongside the probe's merger output — Web Audio sums multiple inputs
+  // automatically, and the recording's own stereo image is preserved as-is.
+  const seaEl = createSeaAudioEl();
+  try { await seaEl.play(); } catch (e) { console.error('Sea sound failed to play:', e); }
+  const seaSrc = AX.createMediaElementSource(seaEl);
+  const hp1 = AX.createBiquadFilter(); hp1.type = 'highpass'; hp1.frequency.value = SEA_HP_HZ; hp1.Q.value = 0.707;
+  const hp2 = AX.createBiquadFilter(); hp2.type = 'highpass'; hp2.frequency.value = SEA_HP_HZ; hp2.Q.value = 0.707;
+  const seaGain = AX.createGain(); seaGain.gain.value = dbToLin(seaDb);
+  seaSrc.connect(hp1); hp1.connect(hp2); hp2.connect(seaGain); seaGain.connect(AN.master);
+  AN.seaEl = seaEl; AN.seaSrc = seaSrc; AN.seaGain = seaGain;
+
+  // ── PROBE oscillator with per-ear gain nodes ──
+  AN.probeOsc = AX.createOscillator(); AN.probeOsc.type = 'sine'; AN.probeOsc.frequency.value = 20;
+  AN.probeGainL = AX.createGain(); AN.probeGainL.gain.value = 0;
+  AN.probeGainR = AX.createGain(); AN.probeGainR.gain.value = 0;
+  AN.probeOsc.connect(AN.probeGainL); AN.probeOsc.connect(AN.probeGainR);
+  AN.probeGainL.connect(AN.merger, 0, 0); AN.probeGainR.connect(AN.merger, 0, 1);
+  AN.probeOsc.start();
+}
+
+function hannCurve(N, rising) {
+  const c = new Float32Array(N);
+  for (let i = 0; i < N; i++) c[i] = rising ? 0.5 * (1 - Math.cos(Math.PI * i / (N - 1))) : 0.5 * (1 + Math.cos(Math.PI * i / (N - 1)));
+  return c;
+}
+const HANN_N = 64, HANN_RISE = hannCurve(HANN_N, true), HANN_FALL = hannCurve(HANN_N, false);
+
+// ear ∈ 'left' | 'right'; levelDb is the staircase level in dB relative to the maximum budgeted
+// probe amplitude (0 = as loud as the headroom allows, negative = quieter). A catch trial passes
+// levelDb = null and plays nothing at all, so the sea sound is the only thing audible.
+function startProbe(freq, ear, levelDb) {
+  if (!AX) return { tL: 0, tR: 0 };
+  const now = AX.currentTime;
+  SES.probeFreq = freq;
+  SES.probeStartAudio = now;
+  const lin = levelDb == null ? 0 : SES.probeLin * dbToLin(levelDb);
+  const tL = (ear === 'left') ? lin : 0;
+  const tR = (ear === 'right') ? lin : 0;
+  AN.probeOsc.frequency.cancelScheduledValues(now);
+  AN.probeOsc.frequency.setValueAtTime(freq, now);
+  const fadeDur = Math.max(0.3, 2 / freq);
+  AN.probeGainL.gain.cancelScheduledValues(now);
+  AN.probeGainR.gain.cancelScheduledValues(now);
+  if (tL !== 0) AN.probeGainL.gain.setValueCurveAtTime(HANN_RISE.map(v => v * tL), now, fadeDur); else AN.probeGainL.gain.setValueAtTime(0, now);
+  if (tR !== 0) AN.probeGainR.gain.setValueCurveAtTime(HANN_RISE.map(v => v * tR), now, fadeDur); else AN.probeGainR.gain.setValueAtTime(0, now);
+  return { tL, tR };
+}
+
+function stopProbe(tL, tR) {
+  if (!AX) return;
+  const now = AX.currentTime, freq = SES.probeFreq || 20, period = 1 / freq;
+  const elapsed = now - SES.probeStartAudio;
+  const nextBoundary = Math.ceil(elapsed / period) * period + SES.probeStartAudio;
+  const fadeStart = Math.max(now + 0.005, nextBoundary), fadeDur = Math.max(0.3, 2 / freq);
+  AN.probeGainL.gain.cancelScheduledValues(now);
+  AN.probeGainR.gain.cancelScheduledValues(now);
+  const preFade = Math.max(now + 0.001, fadeStart - 1 / (AX.sampleRate || 44100));
+  if (tL !== 0) { AN.probeGainL.gain.setValueAtTime(tL, preFade); AN.probeGainL.gain.setValueCurveAtTime(HANN_FALL.map(v => v * tL), fadeStart, fadeDur); }
+  else AN.probeGainL.gain.setValueAtTime(0, now);
+  if (tR !== 0) { AN.probeGainR.gain.setValueAtTime(tR, preFade); AN.probeGainR.gain.setValueCurveAtTime(HANN_FALL.map(v => v * tR), fadeStart, fadeDur); }
+  else AN.probeGainR.gain.setValueAtTime(0, now);
+  AN.probeGainL.gain.setValueAtTime(0, fadeStart + fadeDur + 0.02);
+  AN.probeGainR.gain.setValueAtTime(0, fadeStart + fadeDur + 0.02);
+}
+function stopProbeCur() { stopProbe(curProbeGains.tL, curProbeGains.tR); curProbeGains = { tL: 0, tR: 0 }; }
+function silenceAllNow() {
+  if (!AX) return;
+  const now = AX.currentTime;
+  [AN.probeGainL, AN.probeGainR, AN.seaGain].forEach(g => { if (!g) return; g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(0, now); });
+}
+function destroyAudio() {
+  silenceAllNow();
+  if (AN.seaEl) { try { AN.seaEl.pause(); } catch (e) {} AN.seaEl.remove(); }
+  if (AX) { AX.close().catch(() => {}); AX = null; }
+  AN = {};
+}
+
+// ── Isolated sea-sound preview (config screen, before the real session starts) ──
+let previewAX = null, previewNodes = null;
+async function toggleSeaPreview() {
+  const btn = el('btn-preview-sea');
+  if (previewAX) { stopSeaPreview(); return; }
+  btn.disabled = true; btn.textContent = '⏳…';
+  try {
+    previewAX = new (window.AudioContext || window.webkitAudioContext)();
+    if (previewAX.state === 'suspended') await previewAX.resume();
+    const seaDb = +el('cfg-seadb').value;
+    const seaEl = createSeaAudioEl();
+    await seaEl.play();
+    const src = previewAX.createMediaElementSource(seaEl);
+    const hp1 = previewAX.createBiquadFilter(); hp1.type = 'highpass'; hp1.frequency.value = SEA_HP_HZ;
+    const hp2 = previewAX.createBiquadFilter(); hp2.type = 'highpass'; hp2.frequency.value = SEA_HP_HZ;
+    const g = previewAX.createGain(); g.gain.value = 0;
+    src.connect(hp1); hp1.connect(hp2); hp2.connect(g); g.connect(previewAX.destination);
+    g.gain.setTargetAtTime(dbToLin(seaDb), previewAX.currentTime, 0.2);
+    previewNodes = { el: seaEl, src, g };
+    btn.disabled = false; btn.textContent = '⏸ Stop';
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '🔊 Preview';
+    alert('Preview failed: ' + err.message);
+    if (previewAX) { previewAX.close().catch(() => {}); previewAX = null; }
+  }
+}
+function stopSeaPreview() {
+  if (previewNodes) {
+    const now = previewAX.currentTime;
+    previewNodes.g.gain.cancelScheduledValues(now);
+    previewNodes.g.gain.setTargetAtTime(0, now, 0.15);
+    const nodes = previewNodes, ax = previewAX;
+    setTimeout(() => {
+      try { nodes.el.pause(); } catch (e) {}
+      nodes.el.remove();
+      ax?.close().catch(() => {});
+    }, 350);
+    previewAX = null; previewNodes = null;
+  } else if (previewAX) { previewAX.close().catch(() => {}); previewAX = null; }
+  const btn = el('btn-preview-sea');
+  if (btn) { btn.textContent = '🔊 Preview'; btn.disabled = false; }
+}
+
+// ── Isolated probe check (config screen) ── plays one probe frequency alone, in its own context,
+// with nothing else in the path. Gives a direct A/B against an external tone generator.
+let probeAX = null, probeNodes = null, probeCheckFreq = null;
+async function toggleProbeCheck(freq) {
+  const wasFreq = probeCheckFreq;
+  if (probeAX) stopProbeCheck();
+  if (wasFreq === freq) return;            // tapping the one that's already playing just stops it
+  try {
+    probeAX = new (window.AudioContext || window.webkitAudioContext)();
+    if (probeAX.state === 'suspended') await probeAX.resume();
+    const lin = probeLinFor(+el('cfg-seadb').value);
+    const osc = probeAX.createOscillator(); osc.type = 'sine'; osc.frequency.value = freq;
+    const g = probeAX.createGain(); g.gain.value = 0;
+    osc.connect(g); g.connect(probeAX.destination);
+    osc.start();
+    g.gain.setTargetAtTime(lin, probeAX.currentTime, Math.max(0.05, 2 / freq));
+    probeNodes = { osc, g }; probeCheckFreq = freq;
+  } catch (err) {
+    stopProbeCheck();
+    alert('Probe check failed: ' + err.message);
+  }
+  updateProbeCheckUI();
+}
+function stopProbeCheck() {
+  if (probeNodes) {
+    const now = probeAX.currentTime;
+    probeNodes.g.gain.cancelScheduledValues(now);
+    probeNodes.g.gain.setTargetAtTime(0, now, 0.05);
+    const nodes = probeNodes, ax = probeAX;
+    setTimeout(() => { try { nodes.osc.stop(); } catch (e) {} ax.close().catch(() => {}); }, 250);
+  } else if (probeAX) { probeAX.close().catch(() => {}); }
+  probeAX = null; probeNodes = null; probeCheckFreq = null;
+  updateProbeCheckUI();
+}
+function updateProbeCheckUI() {
+  FREQS.forEach(f => { const b = el('btn-probe-' + f); if (b) b.textContent = (probeCheckFreq === f ? '⏸ ' : '▶ ') + f + ' Hz'; });
+}
+
+// ══════════════════════════ UI HELPERS ══════════════════════════
+function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); el(id).classList.add('active'); }
+function showOverlay(id) { el(id).classList.add('vis'); }
+function hideOverlay(id) { el(id).classList.remove('vis'); }
+function setPhase(cls, txt) { const box = el('phase-box'); box.className = cls; box.textContent = txt; }
+
+function updateSeaLabel() {
+  const db = +el('cfg-seadb').value;
+  const qual = db <= -30 ? 'very quiet' : db <= -22 ? 'quiet' : db <= -14 ? 'moderate' : 'loud';
+  el('sea-label').textContent = `${db} dBFS · ${qual} → probe ${linToDb(probeLinFor(db)).toFixed(1)} dBFS`;
+}
+function gateMs() { return (+el('cfg-gate').value || 6) * 1000; }
+function updateEstimate() {
+  const rev = +el('cfg-reversals').value || 8;
+  // A 1-up/1-down staircase typically needs roughly 1.6 trials per reversal once it is tracking,
+  // plus ~3 trials of initial walk-up. Rough but close enough to set expectations.
+  const perEar = Math.round(3 + rev * 1.6);
+  const nTrials = Math.min(perEar, STAIR_MAX_TRIALS) * STAIR_EARS.length + CATCH_TRIALS;
+  const perTrialS = 0.3 + gateMs() / 1000 + 2.5 + (WASHOUT_MIN_MS + WASHOUT_MAX_MS / 2) / 1000;
+  el('estimate-txt').textContent = `~${nTrials} trials (~${perEar}/ear + ${CATCH_TRIALS} catch) at ` +
+    `${el('cfg-freq').value} Hz · ~${Math.round(perTrialS)}s each · ` +
+    `~${Math.max(1, Math.round(nTrials * perTrialS / 60))} min total`;
+}
+document.querySelectorAll('.safety-cb').forEach(cb => cb.addEventListener('change', () => {
+  el('btn-start').disabled = !Array.from(document.querySelectorAll('.safety-cb')).every(c => c.checked);
+}));
+updateSeaLabel(); updateEstimate();
+
+// ══════════════════════════ MAIN TEST ══════════════════════════
+// Fisher-Yates using the session's seeded PRNG, so the whole trial order stays reproducible.
+function shuffleInPlace(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(SES.prng() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// ── Staircase state ──
+// One independent tracker per ear. `db` is the level that the NEXT trial for this ear will use.
+// A reversal is recorded whenever the direction of travel flips, and the threshold is the mean
+// of the final reversals — the standard estimator, which is why the early coarse-step reversals
+// are deliberately excluded from it.
+function newStair(ear) {
+  return { ear, db: STAIR_START_DB, dir: 0, reversals: [], trials: 0, done: false, track: [] };
+}
+function stepFor(stair) {
+  return stair.reversals.length >= 2 ? STAIR_STEP_FINE : STAIR_STEP_COARSE;
+}
+function advanceStair(stair, failed, levelUsed) {
+  const dir = failed ? -1 : +1;          // couldn't compensate -> quieter; could -> louder
+  if (stair.dir !== 0 && dir !== stair.dir) stair.reversals.push(levelUsed);
+  stair.dir = dir;
+  let step = stepFor(stair);
+  // Fast approach: every upward step before the very first reversal takes a bigger stride, so
+  // the walk up from the deliberately quiet start costs ~2 trials instead of ~4. It only affects
+  // the pre-reversal walk-up, so it cannot bias the threshold, which averages reversals only.
+  if (stair.reversals.length === 0 && dir > 0) step *= STAIR_APPROACH_BOOST;
+  stair.db = Math.max(STAIR_MIN_DB, Math.min(STAIR_MAX_DB, stair.db + dir * step));
+  stair.trials++;
+  if (stair.reversals.length >= SES.targetReversals || stair.trials >= STAIR_MAX_TRIALS) stair.done = true;
+}
+function stairThreshold(stair) {
+  const r = stair.reversals;
+  if (!r.length) return null;
+  const use = r.slice(-Math.min(THRESHOLD_FROM_LAST, r.length));
+  const mean = use.reduce((a, b) => a + b, 0) / use.length;
+  const sd = use.length > 1
+    ? Math.sqrt(use.reduce((s, v) => s + (v - mean) ** 2, 0) / (use.length - 1)) : null;
+  return { db: mean, sd, n: use.length, se: sd == null ? null : sd / Math.sqrt(use.length) };
+}
+
+function bumpStats(stairs, nCatch) {
+  el('stat-revL').textContent = stairs.find(s => s.ear === 'left').reversals.length;
+  el('stat-revR').textContent = stairs.find(s => s.ear === 'right').reversals.length;
+  el('stat-catch').textContent = nCatch;
+}
+
+async function runStairTrial(trial, n) {
+  showScreen('s-main');
+  el('main-trial-n').textContent = n;
+  // No on-screen hint of ear, level, or whether this is a catch trial — the whole point of the
+  // catch trials is that they must be indistinguishable from a very quiet real one.
+  setPhase('ph-probe', 'Listening… try to compensate if needed, then answer below');
+  el('sev-buttons').style.visibility = 'hidden';
+  curProbeGains = startProbe(trial.freq, trial.ear, trial.levelDb);
+  logSes('trial_probe_start', { n, freq: trial.freq, ear: trial.ear, levelDb: trial.levelDb, isCatch: trial.isCatch });
+
+  await sleep(gateMs()); checkAbort();
+  el('sev-buttons').style.visibility = 'visible';
+  const respKey = await withTimeout(waitForChoice(['sev-1', 'sev-2', 'sev-3'], 0, el('main-wait')),
+                                    MAIN_MAX_LISTEN_MS - gateMs(), 'timeout');
+  checkAbort();
+  el('sev-buttons').style.visibility = 'hidden';
+  const response = respKey === 'timeout' ? null : respKey;
+  logSes('trial_response', { n, response, timeout: respKey === 'timeout' });
+
+  stopProbeCur();
+  setPhase('ph-wash', 'Washout — sea sound only, probe is off');
+  const washMs = WASHOUT_MIN_MS + SES.prng() * WASHOUT_MAX_MS;
+  // Asked immediately, in parallel with the washout timer, so the side doesn't have to be held
+  // in memory and the washout costs no extra wall-clock time.
+  const guessPromise = showEarGuess().then(g => { logSes('trial_earguess', { n, actualEar: trial.ear, guess: g }); return g; });
+  await sleep(washMs); checkAbort();
+  const guess = await guessPromise;
+  checkAbort();
+
+  return Object.assign({}, trial, { n, response, earGuess: guess, timeout: respKey === 'timeout' });
+}
+
+function showEarGuess() {
+  showOverlay('guess-overlay');
+  return waitForChoice(['guess-left', 'guess-right', 'guess-unsure']).then(v => { hideOverlay('guess-overlay'); return v; });
+}
+
+async function runMainTest() {
+  const freq = +el('cfg-freq').value || 20;
+  const stairs = STAIR_EARS.map(newStair);
+  SES.stairs = stairs;
+  let catchLeft = CATCH_TRIALS, n = 1;
+  bumpStats(stairs, 0);
+
+  while (true) {
+    checkAbort();
+    const active = stairs.filter(s => !s.done);
+    if (!active.length && catchLeft === 0) break;
+
+    // Estimate how many staircase trials are still to come so the catch trials can be sprinkled
+    // roughly evenly rather than all clumping at the start or the end. The estimate runs a little
+    // long, so if both staircases converge early there can be catch trials left over — those are
+    // drained here rather than dropped, since a catch budget that silently shrinks would make the
+    // reported false-positive rate depend on how fast the staircases happened to settle.
+    const remaining = active.reduce((s, st) =>
+      s + Math.max(1, Math.min(STAIR_MAX_TRIALS - st.trials, (SES.targetReversals - st.reversals.length) * 2)), 0);
+    const isCatch = catchLeft > 0 && (!active.length || SES.prng() < catchLeft / (remaining + catchLeft));
+
+    let trial, stair = null;
+    if (isCatch) {
+      catchLeft--;
+      // A catch trial still names an ear so the ear-guess question has a ground truth of "neither".
+      trial = { freq, ear: STAIR_EARS[Math.floor(SES.prng() * STAIR_EARS.length)], levelDb: null, isCatch: true };
+    } else {
+      stair = active[Math.floor(SES.prng() * active.length)];
+      trial = { freq, ear: stair.ear, levelDb: stair.db, isCatch: false };
+    }
+
+    const done = await runStairTrial(trial, n);
+    n++;
+    if (stair) {
+      // A timeout is treated as "could compensate" (the least alarming reading) rather than
+      // being dropped, so the staircase can never stall on a missed response.
+      const failed = done.response === 'cannot';
+      const levelUsed = trial.levelDb;
+      advanceStair(stair, failed, levelUsed);
+      stair.track.push({ n: done.n, db: levelUsed, response: done.response, failed });
+      done.stairTrials = stair.trials;
+      done.reversalsAfter = stair.reversals.length;
+    }
+    SES.trials.push(done);
+    bumpStats(stairs, CATCH_TRIALS - catchLeft);
+  }
+}
+
+// ══════════════════════════ ORCHESTRATION ══════════════════════════
+// Every run mutates ABORTED, abortHandlers and SES.log/trials/stairs. None of that was
+// ever reset between sessions, so: (a) once STOP had been pressed once, ABORTED stayed true
+// forever and every later "Begin" click aborted instantly before the first trial, falling
+// straight through to finishSession() with the *previous* session's stale SES.trials/log —
+// i.e. exactly "a new attempt just shows the last results"; (b) even without ever pressing
+// STOP, SES.trials/log simply accumulated across runs instead of starting fresh.
+function resetSessionState() {
+  ABORTED = false;
+  abortHandlers = [];
+  SES = { seed: 0, prng: null, startWall: 0, log: [], trials: [], stairs: [],
+          seaDb: -18, probeLin: probeLinFor(-18), targetReversals: 8 };
+  ['stat-revL', 'stat-revR', 'stat-catch'].forEach(id => { el(id).textContent = '0'; });
+}
+
+async function handleStart() {
+  resetSessionState();
+  el('btn-start').disabled = true; el('btn-start').textContent = 'Starting…';
+  stopSeaPreview(); stopProbeCheck();
+  SES.seed = (Date.now() ^ 0x9e3779b9) >>> 0;
+  SES.prng = mulberry32(SES.seed);
+  SES.startWall = performance.now();
+  SES.seaDb = +el('cfg-seadb').value;
+  SES.probeLin = probeLinFor(SES.seaDb);
+  SES.targetReversals = +el('cfg-reversals').value || 8;
+  SES.gateMs = gateMs();
+  logSes('levels', { seaDb: SES.seaDb, probeLin: SES.probeLin, probeDbfs: +linToDb(SES.probeLin).toFixed(2),
+                     freq: +el('cfg-freq').value, targetReversals: SES.targetReversals, gateMs: SES.gateMs,
+                     startDb: STAIR_START_DB, stepCoarse: STAIR_STEP_COARSE, stepFine: STAIR_STEP_FINE });
+  try {
+    await initAudioCtx();
+    await buildGraph(SES.seaDb);
+    try { if (navigator.wakeLock) await navigator.wakeLock.request('screen'); } catch (e) {}
+    await runMainTest();
+  } catch (e) {
+    if (e.message !== 'SESSION_ABORTED') console.error(e);
+  } finally {
+    finishSession();
+  }
+}
+
+function emergencyStop() {
+  triggerAbort();
+  silenceAllNow();
+  logSes('emergency_stop', {});
+}
+
+function finishSession() {
+  silenceAllNow();
+  destroyAudio();   // fully close the context — otherwise the sea sound loops on into the report screen
+  buildReport();
+  showScreen('s-report');
+  el('btn-start').textContent = '▶ Begin';
+  el('btn-start').disabled = !Array.from(document.querySelectorAll('.safety-cb')).every(c => c.checked);
+}
+
+// "↺ New session" button on the report screen — goes back to the intro screen with a fully
+// reset state so a fresh session can be started without reloading the page.
+function startNewSession() {
+  resetSessionState();
+  el('btn-start').textContent = '▶ Begin';
+  el('btn-start').disabled = !Array.from(document.querySelectorAll('.safety-cb')).every(c => c.checked);
+  showScreen('s-intro');
+}
+
+// ══════════════════════════ REPORT ══════════════════════════
+function wilsonCI(k, n, z = 1.96) {
+  if (n === 0) return { p: null, lo: null, hi: null };
+  const p = k / n, z2 = z * z;
+  const denom = 1 + z2 / n;
+  const centre = p + z2 / (2 * n);
+  const adj = z * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n);
+  return { p, lo: Math.max(0, (centre - adj) / denom), hi: Math.min(1, (centre + adj) / denom) };
+}
+function pct(v) { return v == null ? '—' : (v * 100).toFixed(1) + '%'; }
+
+const RESP_LABEL = { asymptomatic: 'Nothing at all', full: 'Symptom, fully compensable', cannot: 'Cannot fully compensate' };
+const EAR_COLOUR = { left: '#388bfd', right: '#d29922' };
+
+// Two-sided t quantiles at 95%, indexed by degrees of freedom. Reversal counts here are tiny
+// (typically 3 df), where the normal 1.96 understates the interval by more than a factor of 1.5.
+const T95 = [12.71, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228];
+function t95(df) { return df < 1 ? null : (df <= 10 ? T95[df - 1] : 1.96); }
+function dbTxt(v, digits) { return v == null ? '—' : (v >= 0 ? '' : '−') + Math.abs(v).toFixed(digits == null ? 1 : digits) + ' dB'; }
+
+// Staircase track as an inline SVG: level against trial number, one line per ear, with the
+// failures marked solid and the estimated threshold drawn as a dashed rule. This is the single
+// most informative thing in the report — a track that wanders without settling means the
+// threshold number underneath it should not be trusted, and no table can show that.
+function stairPlot(stairs) {
+  const W = 520, H = 230, mL = 46, mR = 74, mT = 14, mB = 30;
+  const maxN = Math.max(2, ...stairs.map(s => s.track.length));
+  const x = i => mL + (W - mL - mR) * (maxN <= 1 ? 0 : i / (maxN - 1));
+  const y = db => mT + (H - mT - mB) * (STAIR_MAX_DB - db) / (STAIR_MAX_DB - STAIR_MIN_DB);
+  let g = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;background:#0d1117;border:1px solid #30363d;border-radius:8px">`;
+  for (let db = STAIR_MAX_DB; db >= STAIR_MIN_DB; db -= 6) {
+    g += `<line x1="${mL}" y1="${y(db)}" x2="${W - mR}" y2="${y(db)}" stroke="#21262d"/>`;
+    g += `<text x="${mL - 6}" y="${y(db) + 3.5}" fill="#8b949e" font-size="9" text-anchor="end">${db}</text>`;
+  }
+  g += `<text x="${mL - 6}" y="${mT - 4}" fill="#8b949e" font-size="9" text-anchor="end">dB</text>`;
+  g += `<text x="${(mL + W - mR) / 2}" y="${H - 8}" fill="#8b949e" font-size="9" text-anchor="middle">trial number within this ear's staircase</text>`;
+  stairs.forEach(s => {
+    const col = EAR_COLOUR[s.ear];
+    if (s.track.length) {
+      g += `<polyline fill="none" stroke="${col}" stroke-width="1.6" points="${s.track.map((p, i) => `${x(i)},${y(p.db)}`).join(' ')}"/>`;
+      s.track.forEach((p, i) => {
+        g += `<circle cx="${x(i)}" cy="${y(p.db)}" r="3.4" stroke="${col}" stroke-width="1.4" fill="${p.failed ? col : '#0d1117'}"/>`;
+      });
+    }
+    const th = stairThreshold(s);
+    if (th) {
+      g += `<line x1="${mL}" y1="${y(th.db)}" x2="${W - mR}" y2="${y(th.db)}" stroke="${col}" stroke-width="1.2" stroke-dasharray="5 4" opacity="0.85"/>`;
+      g += `<text x="${W - mR + 6}" y="${y(th.db) + 3.5}" fill="${col}" font-size="9.5">${s.ear} ${dbTxt(th.db)}</text>`;
+    }
+  });
+  g += `</svg><p class="small mt">Solid dot = "cannot fully compensate" (level drops next time);
+    hollow dot = compensable or nothing felt (level rises). Dashed line = threshold estimate.</p>`;
+  return g;
+}
+
+function buildReport() {
+  let html = '';
+  const stairs = SES.stairs || [];
+  const real = SES.trials.filter(t => !t.isCatch);
+  const catches = SES.trials.filter(t => t.isCatch);
+
+  // ── Headline: the threshold per ear, and the gap between them. This is the whole point of
+  // the session — a level in dB, not a category, so the two ears are compared on a continuous
+  // scale instead of both saturating at "symptomatic" the way the fixed-level design did.
+  const thr = {};
+  stairs.forEach(s => { thr[s.ear] = stairThreshold(s); });
+  html += `<div class="rpt-section"><h3>Compensation threshold per ear (primary outcome)</h3><table><tr>
+    <th>Ear</th><th>Threshold</th><th>Absolute</th><th>Reversals used</th><th>SD</th><th>Trials</th><th>Settled?</th></tr>`;
+  stairs.forEach(s => {
+    const t = thr[s.ear];
+    const settled = s.reversals.length >= SES.targetReversals;
+    html += `<tr><td style="color:${EAR_COLOUR[s.ear]}"><strong>${s.ear}</strong></td>
+      <td><strong>${t ? dbTxt(t.db) : '—'}</strong></td>
+      <td>${t ? (linToDb(SES.probeLin) + t.db).toFixed(1) + ' dBFS' : '—'}</td>
+      <td>${t ? `${t.n} of ${s.reversals.length}` : '0'}</td>
+      <td>${t && t.sd != null ? t.sd.toFixed(1) + ' dB' : '—'}</td>
+      <td>${s.trials}</td>
+      <td>${settled ? 'yes' : `no — stopped at ${s.reversals.length}/${SES.targetReversals}`}</td></tr>`;
+  });
+  html += `</table><p class="small mt">Threshold is the level at which full compensation fails half the time,
+    expressed in dB below the loudest level this session could produce (0&nbsp;dB = the headroom ceiling).
+    <strong>More negative = more sensitive ear</strong>, because less stimulus was needed to defeat compensation.</p></div>`;
+
+  // ── The lateralisation number. Paired only in the loose sense that both staircases ran
+  // interleaved in the same session on the same hardware at the same volume, which is exactly
+  // what makes the *difference* more trustworthy than either absolute value.
+  const tL = thr.left, tR = thr.right;
+  if (tL && tR && tL.se != null && tR.se != null) {
+    const diff = tL.db - tR.db;
+    const se = Math.sqrt(tL.se ** 2 + tR.se ** 2);
+    const df = Math.max(1, tL.n + tR.n - 2);
+    const tv = t95(df);
+    const lo = diff - tv * se, hi = diff + tv * se;
+    const crosses = lo <= 0 && hi >= 0;
+    const moreSensitive = diff < 0 ? 'left' : 'right';
+    html += `<div class="rpt-section"><h3>Ear difference (lateralisation)</h3>
+      <p>Left minus right: <strong>${dbTxt(diff)}</strong>, 95% CI [${dbTxt(lo)}, ${dbTxt(hi)}] (t on ${df} df).</p>
+      <p class="small mt">${crosses
+        ? `The interval includes zero, so this session does <strong>not</strong> establish an ear asymmetry. ` +
+          `It is consistent with anything from ${dbTxt(lo)} to ${dbTxt(hi)} — including no difference at all.`
+        : `The interval excludes zero: the <strong>${moreSensitive} ear</strong> required about ` +
+          `${Math.abs(diff).toFixed(1)} dB less stimulus to defeat compensation. Note this is a single ` +
+          `session and monaural trials cannot be blinded, so expectation can't be fully ruled out — ` +
+          `a repeat session on a different day is what would confirm it.`}</p></div>`;
+  }
+
+  html += `<div class="rpt-section"><h3>Staircase tracks</h3>${stairPlot(stairs)}</div>`;
+
+  // ── Catch trials: the credibility anchor. Without them a "symptomatic" rate has no baseline
+  // to be judged against, since spontaneous symptoms happen anyway.
+  if (catches.length) {
+    const cSym = catches.filter(t => t.response && t.response !== 'asymptomatic').length;
+    const cFail = catches.filter(t => t.response === 'cannot').length;
+    const cCi = wilsonCI(cSym, catches.length);
+    html += `<div class="rpt-section"><h3>Silent catch trials (no probe at all)</h3><table><tr>
+      <th>n</th><th>Reported a symptom</th><th>Rate</th><th>95% CI</th><th>Of which uncompensable</th></tr>
+      <tr><td>${catches.length}</td><td>${cSym}</td><td>${pct(cCi.p)}</td>
+      <td>${cCi.p == null ? '—' : `[${pct(cCi.lo)}, ${pct(cCi.hi)}]`}</td><td>${cFail}</td></tr></table>
+      <p class="small mt">${cSym === 0
+        ? 'No symptom reported on any silent trial, so the thresholds above are not sitting on top of a background of spontaneous reports.'
+        : `A non-zero rate here is expected — spontaneous symptoms happen — but it sets a floor: near-threshold ` +
+          `responses should be read against this ${pct(cCi.p)} baseline, not against zero.`}
+      With only ${catches.length} catch trials this rate is very imprecise; it is a sanity check, not a measurement.</p></div>`;
+  }
+
+  // ── Where in the level range each answer actually landed. Split by ear on purpose: the two
+  // ears sit at different thresholds, so pooling them would produce a non-monotone column even
+  // when both staircases behaved perfectly, destroying the only internal-consistency check here.
+  // Within one ear the failure rate should climb as the level does.
+  html += `<div class="rpt-section"><h3>Response by level, per ear (6 dB bins)</h3><table><tr>
+    <th>Ear</th><th>Level</th><th>n</th><th>Nothing</th><th>Fully compensable</th><th>Cannot compensate</th><th>Failure rate</th></tr>`;
+  stairs.forEach(s => {
+    for (let top = STAIR_MAX_DB; top > STAIR_MIN_DB; top -= 6) {
+      const rows = real.filter(t => t.ear === s.ear && t.levelDb != null && t.levelDb <= top && t.levelDb > top - 6);
+      if (!rows.length) continue;
+      const k = rows.filter(t => t.response === 'cannot').length;
+      html += `<tr><td style="color:${EAR_COLOUR[s.ear]}">${s.ear}</td><td>${top - 6} to ${top} dB</td><td>${rows.length}</td>
+        <td>${rows.filter(t => t.response === 'asymptomatic').length}</td>
+        <td>${rows.filter(t => t.response === 'full').length}</td>
+        <td>${k}</td><td>${pct(k / rows.length)}</td></tr>`;
+    }
+  });
+  html += `</table><p class="small mt">Within each ear the failure rate should rise with level. A
+    staircase spends most of its trials within a few dB of threshold, so the extreme bins will have
+    very few trials in them — read the middle rows, not the ends.</p></div>`;
+
+  // ── Reversal detail, so the threshold above can be audited rather than taken on trust.
+  html += `<div class="rpt-section"><h3>Reversal levels</h3><table><tr><th>Ear</th><th>All reversals (in order)</th></tr>`;
+  stairs.forEach(s => {
+    html += `<tr><td style="color:${EAR_COLOUR[s.ear]}">${s.ear}</td><td class="mono">${
+      s.reversals.length ? s.reversals.map(v => v.toFixed(0)).join(', ') : '—'}</td></tr>`;
+  });
+  html += `</table><p class="small mt">The threshold averages the last ${THRESHOLD_FROM_LAST}; earlier ones
+    are taken with the coarse ${STAIR_STEP_COARSE} dB step and are deliberately excluded.</p></div>`;
+
+  // ── Laterality guessing. Expected to be near-perfect well above threshold and to collapse to
+  // chance near it, which is itself a useful readout of where detection sits relative to
+  // where compensation fails.
+  const lrGuessed = real.filter(t => t.earGuess === 'left' || t.earGuess === 'right');
+  const lrCorrect = lrGuessed.filter(t => t.earGuess === t.ear).length;
+  const lrCi = wilsonCI(lrCorrect, lrGuessed.length);
+  html += `<div class="rpt-section"><h3>Laterality-guess accuracy (chance = 50%)</h3><table><tr>
+    <th>Trials</th><th>Committed to a side</th><th>Can't tell</th><th>Correct when committed</th><th>95% CI</th></tr>
+    <tr><td>${real.length}</td><td>${lrGuessed.length}</td><td>${real.length - lrGuessed.length}</td>
+    <td>${pct(lrCi.p)}</td><td>${lrCi.p == null ? '—' : `[${pct(lrCi.lo)}, ${pct(lrCi.hi)}]`}</td></tr></table>`;
+  if (catches.length) {
+    const cComm = catches.filter(t => t.earGuess === 'left' || t.earGuess === 'right').length;
+    html += `<p class="small mt">On the ${catches.length} silent trials a side was named ${cComm} time(s) —
+      any of those are pure guessing, since there was nothing playing.</p>`;
+  }
+  html += `</div>`;
+
+  // ── Drift check. The previous fixed-level session degraded steadily from start to finish, so
+  // a staircase that slides downward over time is measuring fatigue as much as sensitivity.
+  html += `<div class="rpt-section"><h3>Drift across the session (halves)</h3><table><tr>
+    <th>Ear</th><th>Mean level, first half</th><th>Mean level, second half</th><th>Shift</th></tr>`;
+  stairs.forEach(s => {
+    if (s.track.length < 4) return;
+    const h = Math.ceil(s.track.length / 2);
+    const m = a => a.reduce((x, p) => x + p.db, 0) / a.length;
+    const a1 = m(s.track.slice(0, h)), a2 = m(s.track.slice(h));
+    html += `<tr><td style="color:${EAR_COLOUR[s.ear]}">${s.ear}</td><td>${dbTxt(a1)}</td><td>${dbTxt(a2)}</td>
+      <td>${dbTxt(a2 - a1)}</td></tr>`;
+  });
+  html += `</table><p class="small mt">A staircase naturally converges downward from its starting point, so a
+    modest negative shift is expected. A large one suggests sensitisation over the session rather than a stable threshold.</p></div>`;
+
+  html += `<p class="small">Session seed: ${SES.seed.toString(16).toUpperCase()} ·
+    Probe: ${real.length ? real[0].freq : '—'} Hz steady sine ·
+    Sea sound: ${SES.seaDb} dBFS, continuous all session ·
+    Headroom ceiling (0 dB on the staircase): ${linToDb(SES.probeLin).toFixed(1)} dBFS ·
+    Staircase: 1-up/1-down, ${STAIR_STEP_COARSE} dB coarse then ${STAIR_STEP_FINE} dB fine, target ${SES.targetReversals} reversals ·
+    Listen gate: ${(SES.gateMs || 0) / 1000}s · Trials: ${SES.trials.length} (${catches.length} catch) ·
+    Started: ${new Date(Date.now() - (performance.now() - SES.startWall)).toLocaleString()}</p>`;
+
+  el('report-body').innerHTML = html;
+}
+
+function dlFile(name, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+// One row per completed trial rather than per log event — a flat trial table is what any
+// downstream analysis actually wants.
+function downloadCSV() {
+  const cols = ['n', 'freq', 'ear', 'levelDb', 'isCatch', 'response', 'earGuess',
+                'stairTrials', 'reversalsAfter', 'timeout'];
+  const rows = [cols.join(',')];
+  SES.trials.forEach(t => { rows.push(cols.map(c => `"${t[c] ?? ''}"`).join(',')); });
+  dlFile('scds_threshold_trials.csv', rows.join('\n'), 'text/csv');
+}
+function downloadJSON() {
+  const thresholds = {};
+  (SES.stairs || []).forEach(s => { thresholds[s.ear] = stairThreshold(s); });
+  dlFile('scds_threshold_session.json', JSON.stringify({
+    seed: SES.seed, seaDb: SES.seaDb, probeLin: SES.probeLin,
+    headroomCeilingDbfs: +linToDb(SES.probeLin).toFixed(2),
+    freq: SES.trials.length ? SES.trials[0].freq : null,
+    staircase: { startDb: STAIR_START_DB, minDb: STAIR_MIN_DB, maxDb: STAIR_MAX_DB,
+                 stepCoarse: STAIR_STEP_COARSE, stepFine: STAIR_STEP_FINE,
+                 targetReversals: SES.targetReversals, thresholdFromLast: THRESHOLD_FROM_LAST,
+                 gateMs: SES.gateMs },
+    thresholds,
+    stairs: (SES.stairs || []).map(s => ({ ear: s.ear, reversals: s.reversals, trials: s.trials, track: s.track })),
+    trials: SES.trials, log: SES.log
+  }, null, 2), 'application/json');
+}
+</script>
+</body>
+</html>
