@@ -1,0 +1,1587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>SCDS DVA — legibility under probe</title>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --border: #30363d; --text: #e6edf3;
+  --muted: #8b949e; --accent: #2ea043; --warn: #d29922; --danger: #f85149; --probe: #388bfd;
+  --font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body {
+  font-family: var(--font); background: var(--bg); color: var(--text);
+  min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+  padding-bottom: 50px; -webkit-user-select: none; user-select: none;
+}
+.screen { display: none; width: 100%; max-width: 520px; padding: 20px 16px; flex-direction: column; gap: 16px; }
+.screen.active { display: flex; }
+h1 { font-size: 1.3rem; font-weight: 700; }
+h2 { font-size: 1.0rem; font-weight: 600; color: var(--muted); }
+p { line-height: 1.55; font-size: 0.92rem; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.btn {
+  padding: 14px 18px; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700;
+  cursor: pointer; transition: opacity .15s; font-family: var(--font); width: 100%;
+}
+.btn:disabled { opacity: .32; cursor: not-allowed; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-secondary { background: var(--border); color: var(--text); }
+.btn:not(:disabled):active { opacity: .75; }
+label.field { font-size: 0.8rem; color: var(--muted); display: block; margin-bottom: 4px; line-height: 1.5; }
+input[type=number], input[type=text], select {
+  background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  padding: 8px 10px; border-radius: 6px; font-size: 1rem; width: 100%; font-family: var(--font);
+}
+input[type=range] { width: 100%; accent-color: var(--probe); height: 28px; }
+input[type=checkbox].tog, input[type=radio] { width: 20px; height: 20px; accent-color: var(--accent); }
+.warn-box { background: #1e1300; border: 1px solid var(--warn); border-radius: 8px; padding: 14px; font-size: 0.86rem; line-height: 1.6; }
+.info-box { background: #0c1a2e; border: 1px solid var(--probe); border-radius: 8px; padding: 14px; font-size: 0.86rem; line-height: 1.6; }
+.small { font-size: 0.78rem; color: var(--muted); line-height: 1.5; }
+.mono { font-family: monospace; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mt { margin-top: 8px; }
+.mt2 { margin-top: 14px; }
+hr { border: none; border-top: 1px solid var(--border); margin: 6px 0; }
+.radio-row { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+
+#btn-stop {
+  position: fixed; top: 10px; right: 10px; z-index: 1000; padding: 9px 15px;
+  background: var(--danger); color: #fff; border: none; border-radius: 8px;
+  font-size: 0.85rem; font-weight: 700; font-family: var(--font);
+}
+#btn-pause {
+  position: fixed; top: 10px; left: 10px; z-index: 1000; padding: 9px 15px;
+  background: var(--border); color: var(--text); border: none; border-radius: 8px;
+  font-size: 0.85rem; font-weight: 700; font-family: var(--font);
+}
+
+.stage-box {
+  min-height: 170px; display: flex; align-items: center; justify-content: center;
+  background: var(--surface); border: 2px solid var(--border); border-radius: 10px;
+}
+#fix-dot { font-size: 1.6rem; color: var(--muted); }
+#digit-display {
+  font-family: monospace; font-weight: 700; letter-spacing: 0.15em; color: var(--text);
+  display: none;
+}
+.digits-preview { font-family: monospace; font-weight: 700; letter-spacing: 0.15em; color: var(--text); }
+.pause-line { text-align: center; font-size: 0.85rem; color: var(--warn); min-height: 18px; }
+
+#resp-area { display: none; }
+.digit-entry { font-family: monospace; font-size: 1.5rem; text-align: center; letter-spacing: 0.25em; padding: 12px; }
+.resp-col { display: flex; flex-direction: column; gap: 10px; }
+.resp-btn {
+  padding: 16px 14px; font-size: 0.94rem; font-weight: 600; border: 1px solid var(--border);
+  border-left: 5px solid var(--border); background: var(--surface); color: var(--text);
+  border-radius: 8px; font-family: var(--font); text-align: left; cursor: pointer; line-height: 1.4;
+}
+.resp-btn:disabled { opacity: .3; }
+.resp-yes { border-left-color: var(--accent); }
+.resp-no { border-left-color: var(--danger); }
+
+.ov { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 600; align-items: center; justify-content: center; }
+.ov.vis { display: flex; }
+.ov-card {
+  background: var(--surface); border: 2px solid var(--probe); border-radius: 14px;
+  padding: 22px; max-width: 420px; width: 92%; display: flex; flex-direction: column; gap: 14px;
+}
+.ov-card h3 { font-size: 1rem; color: var(--probe); }
+.ov-card p { font-size: 0.86rem; color: var(--muted); }
+.opt-col { display: flex; flex-direction: column; gap: 9px; }
+.opt-btn {
+  padding: 14px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+  font-size: 0.92rem; background: var(--bg); color: var(--text); font-family: var(--font); text-align: center;
+}
+.opt-btn:disabled { opacity: .3; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.76rem; margin-top: 6px; }
+th { background: var(--surface); padding: 6px 6px; text-align: left; border-bottom: 2px solid var(--border); font-weight: 600; }
+td { padding: 5px 6px; border-bottom: 1px solid var(--border); }
+.rpt-section { margin-bottom: 20px; }
+.rpt-section h3 { font-size: 0.92rem; color: var(--text); margin-bottom: 4px; }
+.verdict { padding: 14px; border-radius: 8px; font-size: 0.9rem; line-height: 1.55; margin-bottom: 16px; border: 2px solid; }
+.v-ok { background: #0d1f12; border-color: var(--accent); }
+.v-warn { background: #1e1300; border-color: var(--warn); }
+.v-bad { background: #2d0f0f; border-color: var(--danger); }
+.g { color: var(--accent); } .w { color: var(--warn); } .d { color: var(--danger); }
+.freq-row { display: flex; gap: 8px; align-items: center; }
+.freq-row input { flex: 1; }
+.freq-row button { width: auto; padding: 8px 12px; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+
+<button id="btn-stop" onclick="emergencyStop()">⏹ STOP</button>
+<button id="btn-pause" onclick="togglePause()" style="display:none">⏸ Pause</button>
+
+<!-- ═══════════════ SCREEN: INTRO ═══════════════ -->
+<div id="s-intro" class="screen active">
+  <h1>SCDS DVA — legibility under probe</h1>
+
+  <div class="info-box">
+    <strong>Why this exists.</strong> Repeating the same fixed sound many dozens of times in one
+    session risks the same thing your own voice does versus a recording of it: after enough
+    exposures, your system may learn "this exact sound predicts that exact symptom" and quietly
+    discount it — which would make an effect shrink or vanish on a rerun for reasons that have
+    nothing to do with the sound itself.<br><br>
+    This tool replaces the subjective severity rating with a brief, mostly-involuntary task:
+    a 1&nbsp;second probe with a short random number flashed in the middle of it, and you report
+    whether you could read it — plus, optionally, what you actually saw, so the reading can be
+    scored right or wrong rather than trusted at your word. That is much harder to consciously
+    discount than a symptom rating, and it stays a fair comparison even if compensation is
+    doing something real underneath.<br><br>
+    <strong>Three modes.</strong> <em>Fixed list</em> repeats a small set of conditions many times —
+    same structure as before, but now the report breaks results down by <em>which repetition
+    this was</em>, so a habituation effect would show up directly as a trend rather than being
+    argued about after the fact. <em>Random sweep</em> draws a fresh, never-repeated frequency
+    (plus random drift and side) every trial, so there is essentially nothing for a
+    stimulus-specific prediction to lock onto. <em>Aggressive random</em> goes further: a fresh
+    random-width frequency <em>band</em> plus a randomly chosen sampling function (sweep,
+    triangle, quadratic, random jumps, or several simultaneous tones) every trial — the report
+    renders that one as a frequency × band-width heat-map.
+  </div>
+
+  <div class="warn-box">
+    <strong>⚠ Dev-iteration build — checklist gating removed.</strong> Levels are still capped
+    harder in the 300&nbsp;Hz–6&nbsp;kHz region (most sensitive, and where the acoustic-trauma
+    history matters most) than at the extremes — see the level card below. Caps are digital, not
+    loudness-equalised. Red STOP button still works at any time.
+  </div>
+
+  <!-- ── Mode ── -->
+  <div class="card">
+    <h2>Mode</h2>
+    <div class="radio-row mt"><input type="radio" name="cfg-mode" id="mode-fixed" value="fixed" checked onchange="onModeChange()"><label for="mode-fixed">Fixed list — repeat a configured set of conditions</label></div>
+    <div class="radio-row mt"><input type="radio" name="cfg-mode" id="mode-random" value="random" onchange="onModeChange()"><label for="mode-random">Random sweep — fresh random freq/drift/side every trial</label></div>
+    <div class="radio-row mt"><input type="radio" name="cfg-mode" id="mode-aggressive" value="aggressive" onchange="onModeChange()"><label for="mode-aggressive">Aggressive random — fresh random band + sampling function every trial</label></div>
+  </div>
+
+  <!-- ── Fixed-mode config ── -->
+  <div class="card" id="fixed-cfg">
+    <h2>Frequency list</h2>
+    <label class="field">Edit this from your phone at any time — it's saved automatically and
+      reused next time you open the page. Each frequency is crossed with steady/drifting and
+      left/right, so N frequencies makes 4N real conditions.</label>
+    <div id="freqlist-rows"></div>
+    <div class="row mt">
+      <button class="btn btn-secondary" style="width:auto;padding:8px 14px;font-size:0.85rem" onclick="addFreqRow()">+ Add frequency</button>
+      <button class="btn btn-secondary" style="width:auto;padding:8px 14px;font-size:0.85rem" onclick="resetFreqList()">↺ Reset to defaults</button>
+    </div>
+    <label class="field mt2">Repeats per condition (4 conditions per frequency: steady/drift × left/right)</label>
+    <input type="number" id="cfg-percell" value="2" min="1" max="10" step="1" oninput="updateEstimate()">
+  </div>
+
+  <!-- ── Random-mode config ── -->
+  <div class="card" id="random-cfg" style="display:none">
+    <h2>Random sweep range</h2>
+    <div class="row">
+      <div style="flex:1"><label class="field">Min Hz</label><input type="number" id="cfg-randmin" value="20" min="1" max="20000" oninput="updateEstimate()"></div>
+      <div style="flex:1"><label class="field">Max Hz</label><input type="number" id="cfg-randmax" value="20000" min="1" max="20000" oninput="updateEstimate()"></div>
+    </div>
+    <div class="row mt">
+      <input type="checkbox" class="tog" id="cfg-randlog" checked onchange="updateEstimate()">
+      <label class="field" style="margin:0" for="cfg-randlog">Sample log-uniform (recommended)</label>
+    </div>
+    <p class="small mt">20&nbsp;Hz–20&nbsp;kHz spans three orders of magnitude. Sampled linearly,
+      almost every trial would land above 1&nbsp;kHz and the low end — where every previous
+      session's effects have clustered — would barely get tested. Log-uniform gives the low,
+      middle and high end roughly equal coverage.</p>
+    <label class="field mt2">Total real trials (drift and side are each an independent 50/50 draw per trial)</label>
+    <input type="number" id="cfg-randtotal" value="48" min="8" max="200" step="4" oninput="updateEstimate()">
+  </div>
+
+  <!-- ── Aggressive-random-mode config ── -->
+  <div class="card" id="aggressive-cfg" style="display:none">
+    <h2>Aggressive random</h2>
+    <p class="small">Each trial draws a random frequency <em>band</em> instead of a single tone:
+      a width from a log-uniform draw over the range below, then a centre frequency drawn
+      log-uniformly so the band always stays inside the outer bound — then one of five sampling
+      functions moves through that band for the probe's full duration.</p>
+    <div class="row mt">
+      <div style="flex:1"><label class="field">Outer bound min Hz</label><input type="number" id="cfg-agg-outermin" value="20" min="1" max="20000" oninput="updateEstimate()"></div>
+      <div style="flex:1"><label class="field">Outer bound max Hz</label><input type="number" id="cfg-agg-outermax" value="20000" min="1" max="20000" oninput="updateEstimate()"></div>
+    </div>
+    <div class="row mt">
+      <div style="flex:1"><label class="field">Band width min Hz</label><input type="number" id="cfg-agg-widthmin" value="1" min="1" max="20000" oninput="updateEstimate()"></div>
+      <div style="flex:1"><label class="field">Band width max Hz</label><input type="number" id="cfg-agg-widthmax" value="10000" min="1" max="20000" oninput="updateEstimate()"></div>
+    </div>
+    <label class="field mt2">Total real trials</label>
+    <input type="number" id="cfg-aggtotal" value="40" min="8" max="200" step="4" oninput="updateEstimate()">
+    <p class="small mt">Sampling function per trial, equally likely: <strong>linear sweep</strong>
+      (straight ramp, random direction), <strong>triangle</strong> (sweeps to the other end of the
+      band and back within the same trial), <strong>quadratic</strong> (an accelerating or
+      decelerating sweep instead of a constant rate), <strong>random jumps</strong> (independent
+      random frequency every ~30–70&nbsp;ms within the band — noise-like rather than a glide), or
+      <strong>multi-tone</strong> (2–4 simultaneous static tones at independent random frequencies
+      in the band, each scaled down so the sum can't clip). All still respect the same
+      per-frequency level caps as the other modes, using the most restrictive point in the band.</p>
+  </div>
+
+  <!-- ── Digit task ── -->
+  <div class="card">
+    <h2>Digit task</h2>
+    <div class="row">
+      <div style="flex:1"><label class="field">Digits shown</label><input type="number" id="cfg-digits" value="3" min="2" max="5" oninput="updateEstimate()"></div>
+      <div style="flex:1"><label class="field">Flash duration (ms)</label><input type="number" id="cfg-flashms" value="500" min="100" max="1500" step="50" oninput="updateEstimate()"></div>
+    </div>
+    <div class="row mt">
+      <div style="flex:1"><label class="field">Probe window (ms)</label><input type="number" id="cfg-probems" value="1000" min="400" max="3000" step="100" oninput="updateEstimate()"></div>
+      <div style="flex:1"><label class="field">Digit font size (px)</label><input type="number" id="cfg-fontsize" value="64" min="28" max="140" step="4"></div>
+    </div>
+    <p class="small mt">The flash sits centred in the probe window — with the defaults, that's
+      250&nbsp;ms of probe, then a 500&nbsp;ms flash, then 250&nbsp;ms more of probe.</p>
+    <div class="row mt2">
+      <div style="flex:1"><label class="field">Pre-roll min (s)</label><input type="number" id="cfg-preroll-min" value="1" min="0" max="10" step="0.5"></div>
+      <div style="flex:1"><label class="field">Pre-roll max (s)</label><input type="number" id="cfg-preroll-max" value="3" min="0" max="15" step="0.5"></div>
+    </div>
+    <p class="small mt">Random silence-except-sea before each probe, so the exact onset time is
+      never predictable. This is the only thing about a trial's timing that's ever randomised on
+      screen.</p>
+  </div>
+
+  <!-- ── Level ── -->
+  <div class="card">
+    <h2>Probe level</h2>
+    <label class="field">One slider, clamped harder in the sensitive mid-range. Requested level →
+      actual level after the per-frequency cap and (if sea is on) headroom.</label>
+    <input type="range" id="cfg-level" min="-40" max="0" step="1" value="-6" oninput="updateLevels()">
+    <div class="small" id="lbl-level"></div>
+    <p class="small mt">Caps: below 300&nbsp;Hz, up to 0&nbsp;dBFS. 300&nbsp;Hz–6&nbsp;kHz (the most
+      sensitive region, and where the acoustic-trauma history matters most), capped at −18&nbsp;dBFS.
+      Above 6&nbsp;kHz, capped at −10&nbsp;dBFS.</p>
+    <div class="row mt2">
+      <div style="flex:1"><label class="field">Preview frequency (Hz)</label><input type="number" id="cfg-preview-hz" value="1000" min="1" max="20000"></div>
+      <button class="btn btn-secondary" id="btn-preview" style="width:auto;padding:10px 16px;align-self:flex-end" onclick="togglePreview()">▶ Preview</button>
+    </div>
+  </div>
+
+  <!-- ── Ambient ── -->
+  <div class="card">
+    <h2>Sea ambient</h2>
+    <div class="row">
+      <input type="checkbox" class="tog" id="cfg-sea" checked onchange="updateLevels()">
+      <label class="field" style="margin:0" for="cfg-sea">Play continuously through the session (fills the pre-roll and covers onset clicks)</label>
+    </div>
+    <div id="sea-cfg" class="mt2">
+      <label class="field">Sea level</label>
+      <input type="range" id="cfg-seadb" min="-40" max="-12" step="1" value="-24" oninput="updateLevels()">
+      <div class="row" style="justify-content:space-between">
+        <span class="small" id="sea-label"></span>
+        <button class="btn btn-secondary" id="btn-preview-sea" style="width:auto;padding:8px 14px;font-size:0.82rem" onclick="toggleSeaPreview()">🔊 Preview</button>
+      </div>
+      <p class="small mt">High-passed at 180&nbsp;Hz, so it has no energy anywhere near the low
+        frequencies where past sessions found the most effect, but real energy from ~300&nbsp;Hz up.</p>
+    </div>
+  </div>
+
+  <p class="small" id="estimate-txt"></p>
+  <button class="btn btn-primary" id="btn-start" onclick="startCalibration()">▶ Begin</button>
+</div>
+
+<!-- ═══════════════ SCREEN: FONT-SIZE CALIBRATION ═══════════════ -->
+<div id="s-calib" class="screen">
+  <h1>Font size check</h1>
+  <p>A random number flashes on repeat, at the exact duration used in the real trials. Adjust the
+    size down until it's the smallest you can still read reliably while everything looks stable —
+    that's the legibility threshold this session's probe trials get compared against, so it's
+    worth getting a real answer rather than a comfortable one.</p>
+  <div class="stage-box">
+    <span id="calib-digit" class="digits-preview"></span>
+  </div>
+  <div class="row" style="justify-content:center;gap:18px">
+    <button class="btn btn-secondary" style="width:auto;padding:14px 22px;font-size:1.3rem" onclick="calibAdjust(-8)">A−</button>
+    <span id="calib-size-lbl" class="mono" style="font-size:1.05rem;min-width:60px;text-align:center"></span>
+    <button class="btn btn-secondary" style="width:auto;padding:14px 22px;font-size:1.3rem" onclick="calibAdjust(8)">A+</button>
+  </div>
+  <button class="btn btn-primary" onclick="finishCalibration()">Continue with this size ▶</button>
+</div>
+
+<!-- ═══════════════ SCREEN: MAIN TEST ═══════════════ -->
+<div id="s-main" class="screen">
+  <h2>Trial <span id="main-trial-n">1</span> / <span id="main-trial-total">40</span></h2>
+  <div id="stage" class="stage-box">
+    <span id="fix-dot">•</span>
+    <span id="digit-display"></span>
+  </div>
+  <div class="pause-line" id="pause-status"></div>
+  <div id="resp-area">
+    <label class="field">Number seen (optional)</label>
+    <input type="text" id="digit-input" class="digit-entry" inputmode="numeric" pattern="[0-9]*" placeholder="…">
+    <div class="resp-col mt2">
+      <button class="resp-btn resp-yes" id="resp-yes" data-val="yes">✓ I could read it</button>
+      <button class="resp-btn resp-no" id="resp-no" data-val="no">✗ Could not read it</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ SCREEN: REPORT ═══════════════ -->
+<div id="s-report" class="screen">
+  <h1>Session report</h1>
+  <div class="row">
+    <button class="btn btn-secondary" style="width:auto;padding:10px 16px" onclick="downloadCSV()">⬇ CSV</button>
+    <button class="btn btn-secondary" style="width:auto;padding:10px 16px" onclick="downloadJSON()">⬇ JSON</button>
+    <button class="btn btn-primary" style="width:auto;padding:10px 16px" onclick="startNewSession()">↺ New session</button>
+  </div>
+  <div id="report-body"></div>
+  <div class="warn-box small">
+    Uncalibrated self-experimentation tool. The probe is a pure sine on the selected channel, summed
+    with the sea sound (if enabled) so the total stays below full scale — no limiter or soft-clipper
+    in the path, so no harmonic distortion is added. No absolute SPL is implied. Not a diagnostic device.
+  </div>
+</div>
+
+<!-- ── Ear-guess overlay ── -->
+<div id="guess-overlay" class="ov">
+  <div class="ov-card">
+    <h3>Which side was it?</h3>
+    <p>Answer now, while it's fresh — asked on every trial, sham included, so its presence never
+      reveals which kind of trial you just had.</p>
+    <div class="opt-col">
+      <button class="opt-btn" id="guess-left" data-val="left">Left</button>
+      <button class="opt-btn" id="guess-right" data-val="right">Right</button>
+      <button class="opt-btn" id="guess-unsure" data-val="unsure">Can't tell</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Gate / sham-run overlay (opening baseline and mid-session both use this) ── -->
+<div id="gate-overlay" class="ov">
+  <div class="ov-card">
+    <h3 id="gate-title">Before we start</h3>
+    <p id="gate-text"></p>
+    <div class="opt-col">
+      <button class="opt-btn" id="gate-go" data-val="go">Continue with the session</button>
+      <button class="opt-btn" id="gate-stop" data-val="stop">Stop — come back when settled</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ══════════════════════════ DESIGN CONSTANTS ══════════════════════════
+const DRIFTS = ['steady', 'drift'];
+const EARS   = ['left', 'right'];
+const DEFAULT_FREQ_LIST = [20, 60, 125, 250, 500, 1000, 4000];
+
+let DRIFT_DEPTH = 0.40;
+const DRIFT_SEG_MIN_S = 0.15, DRIFT_SEG_MAX_S = 0.35;   // shorter segments to fit inside a ~1s window
+
+// Silent trials, as in every previous tool. Without a sham arm sized against a measured floor,
+// no legibility rate below means anything on its own.
+const SHAM_FRACTION = 0.25;
+const BASELINE_TRIALS = 3;
+
+const SHAM_RECHECK_MIN_GAP = 2, SHAM_RECHECK_MAX_GAP = 5;
+
+const SEA_HP_HZ = 180;
+const SEA_FILE = 'rmultimediaeu-ocean-waves-250310.mp3';
+const PEAK_MARGIN = 0.02;
+const INTERTRIAL_GAP_MIN_MS = 800, INTERTRIAL_GAP_MAX_MS = 1500;
+
+function mulberry32(seed) {
+  return function () {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function el(id) { return document.getElementById(id); }
+function dbToLin(db) { return Math.pow(10, db / 20); }
+function linToDb(lin) { return 20 * Math.log10(Math.max(1e-9, lin)); }
+
+// Harder cap in the 300 Hz-6 kHz band than at the extremes: that's where ears are most sensitive,
+// consumer earbuds are most efficient, and the acoustic-trauma history matters most. Above 6 kHz
+// most earbuds put out little anyway, but a modest cap is kept regardless of driver behaviour.
+function levelCapDb(freq) {
+  if (freq == null) return 0;
+  if (freq < 300) return 0;
+  if (freq <= 6000) return -18;
+  return -10;
+}
+function headroomLin() {
+  const seaOn = el('cfg-sea').checked;
+  const seaLin = seaOn ? dbToLin(+el('cfg-seadb').value) : 0;
+  return Math.max(0.05, 1 - seaLin - PEAK_MARGIN);
+}
+function probeLinFor(freq) {
+  const cap = levelCapDb(freq);
+  const requestedDb = Math.min(+el('cfg-level').value, cap);
+  return Math.min(dbToLin(requestedDb), headroomLin());
+}
+
+// ══════════════════════════ FREQUENCY-LIST CONFIG (persisted) ══════════════════════════
+// Plain configuration, not session/trial state — unrelated to the restart bug that motivated
+// removing localStorage for session state in an earlier tool. Persisting this list is exactly
+// what "iterate from your phone without a computer" needs: edit once, it survives a reload.
+let freqList = loadFreqList();
+function loadFreqList() {
+  try {
+    const s = localStorage.getItem('scds_dva_freqlist');
+    if (s) { const a = JSON.parse(s); if (Array.isArray(a) && a.length) return a; }
+  } catch (e) {}
+  return DEFAULT_FREQ_LIST.slice();
+}
+function saveFreqList() { try { localStorage.setItem('scds_dva_freqlist', JSON.stringify(freqList)); } catch (e) {} }
+function renderFreqList() {
+  const c = el('freqlist-rows');
+  c.innerHTML = '';
+  freqList.forEach((f, i) => {
+    const row = document.createElement('div');
+    row.className = 'freq-row mt';
+    row.innerHTML = `<input type="number" min="1" max="20000" step="1" value="${f}" data-idx="${i}">
+      <button class="btn btn-secondary" data-idx="${i}">×</button>`;
+    c.appendChild(row);
+  });
+  c.querySelectorAll('input').forEach(inp => inp.addEventListener('input', e => {
+    const i = +e.target.dataset.idx;
+    freqList[i] = +e.target.value || freqList[i];
+    saveFreqList(); updateEstimate();
+  }));
+  c.querySelectorAll('button').forEach(b => b.addEventListener('click', e => {
+    const i = +e.target.dataset.idx;
+    freqList.splice(i, 1); saveFreqList(); renderFreqList(); updateEstimate();
+  }));
+}
+function addFreqRow() { freqList.push(1000); saveFreqList(); renderFreqList(); updateEstimate(); }
+function resetFreqList() { freqList = DEFAULT_FREQ_LIST.slice(); saveFreqList(); renderFreqList(); updateEstimate(); }
+function currentMode() { return document.querySelector('input[name="cfg-mode"]:checked').value; }
+function onModeChange() {
+  const mode = currentMode();
+  el('fixed-cfg').style.display = mode === 'fixed' ? 'block' : 'none';
+  el('random-cfg').style.display = mode === 'random' ? 'block' : 'none';
+  el('aggressive-cfg').style.display = mode === 'aggressive' ? 'block' : 'none';
+  updateEstimate();
+}
+
+// ══════════════════════════ ABORT / SLEEP / PAUSE ══════════════════════════
+let ABORTED = false;
+let abortHandlers = [];
+function triggerAbort() {
+  if (ABORTED) return;
+  ABORTED = true;
+  abortHandlers.slice().forEach(f => { try { f(); } catch (e) {} });
+}
+function sleep(ms) {
+  return new Promise(resolve => {
+    if (ABORTED) return resolve();
+    const t = setTimeout(finish, ms);
+    function finish() { cleanup(); resolve(); }
+    function cleanup() { clearTimeout(t); abortHandlers = abortHandlers.filter(f => f !== finish); }
+    abortHandlers.push(finish);
+  });
+}
+function checkAbort() { if (ABORTED) throw new Error('SESSION_ABORTED'); }
+
+// Guards every external/async call in the startup chain (AudioContext.resume(), media .play(),
+// Wake Lock) against silently hanging forever instead of resolving or rejecting — on iOS Safari
+// in particular these can stall without either, which otherwise leaves Begin stuck on "Starting…"
+// with no way forward and no error to see.
+function withTimeout(promise, ms, warnMsg) {
+  return Promise.race([
+    Promise.resolve(promise).catch(e => { console.error(e); return 'rejected'; }),
+    new Promise(resolve => setTimeout(() => { console.warn(warnMsg || `timed out after ${ms}ms`); resolve('timeout'); }, ms))
+  ]);
+}
+
+// Pause only takes effect at a trial boundary, never mid-trial — pausing mid-flash or mid-probe
+// would just be confusing and could itself leak timing information.
+let pauseGate = null;
+function togglePause() { pauseGate ? requestResume() : requestPause(); }
+function requestPause() {
+  if (pauseGate) return;
+  let resolveFn;
+  pauseGate = new Promise(r => { resolveFn = r; });
+  pauseGate.resolve = resolveFn;
+  el('btn-pause').textContent = '▶ Resume';
+  el('pause-status').textContent = 'Paused — will pick up after the current trial finishes.';
+}
+function requestResume() {
+  if (!pauseGate) return;
+  pauseGate.resolve();
+  pauseGate = null;
+  el('btn-pause').textContent = '⏸ Pause';
+  el('pause-status').textContent = '';
+}
+async function waitIfPaused() { while (pauseGate) { await pauseGate; } }
+
+function waitForChoice(ids) {
+  return new Promise(resolve => {
+    if (ABORTED) return resolve(null);
+    let settled = false;
+    function settle(val) { if (settled) return; settled = true; cleanup(); resolve(val); }
+    function onClick(e) { settle(e.currentTarget.dataset.val ?? e.currentTarget.id); }
+    ids.forEach(id => el(id).addEventListener('click', onClick));
+    function onAbort() { settle(null); }
+    abortHandlers.push(onAbort);
+    function cleanup() {
+      ids.forEach(id => el(id).removeEventListener('click', onClick));
+      abortHandlers = abortHandlers.filter(f => f !== onAbort);
+    }
+  });
+}
+
+// ══════════════════════════ SESSION STATE ══════════════════════════
+let SES = {};
+function blankSession() {
+  return {
+    seed: 0, prng: null, startWall: 0, log: [], trials: [], baseline: [],
+    mode: 'fixed', freqList: [], randMin: 20, randMax: 20000, randLog: true,
+    aggOuterMin: 20, aggOuterMax: 20000, aggWidthMin: 1, aggWidthMax: 10000, aggTotal: 40,
+    seaOn: true, seaDb: -24, levelDb: -6, driftDepth: DRIFT_DEPTH,
+    nDigits: 3, flashMs: 500, probeMs: 1000, prerollMinS: 1, prerollMaxS: 3,
+    gate: null, shamHistory: [], shamRecheckCount: 0, shamAbortPrompts: 0, stoppedBySham: false,
+    repeatCounters: {}
+  };
+}
+function logSes(type, data) {
+  SES.log.push(Object.assign({ t: Math.round(performance.now() - SES.startWall), type }, data || {}));
+}
+
+// ══════════════════════════ AUDIO ENGINE ══════════════════════════
+let AX = null, AN = {};
+let curProbeGains = { tL: 0, tR: 0 };
+
+async function initAudioCtx() {
+  AX = new (window.AudioContext || window.webkitAudioContext)();
+  if (AX.state === 'suspended') await withTimeout(AX.resume(), 3000, 'AudioContext.resume() stalled — continuing anyway.');
+  logSes('audio_init', { sampleRate: AX.sampleRate, ua: navigator.userAgent, state: AX.state });
+}
+function createSeaAudioEl() {
+  const a = document.createElement('audio');
+  a.src = SEA_FILE; a.loop = true; a.preload = 'auto'; a.crossOrigin = 'anonymous';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  return a;
+}
+async function buildGraph() {
+  AN.master = AX.createGain(); AN.master.gain.value = 1.0; AN.master.connect(AX.destination);
+  AN.merger = AX.createChannelMerger(2); AN.merger.connect(AN.master);
+
+  if (SES.seaOn) {
+    const seaEl = createSeaAudioEl();
+    await withTimeout(seaEl.play(), 3000, 'Sea sound did not start within 3s — continuing without waiting further.');
+    const seaSrc = AX.createMediaElementSource(seaEl);
+    const hp1 = AX.createBiquadFilter(); hp1.type = 'highpass'; hp1.frequency.value = SEA_HP_HZ; hp1.Q.value = 0.707;
+    const hp2 = AX.createBiquadFilter(); hp2.type = 'highpass'; hp2.frequency.value = SEA_HP_HZ; hp2.Q.value = 0.707;
+    const seaGain = AX.createGain(); seaGain.gain.value = dbToLin(SES.seaDb);
+    seaSrc.connect(hp1); hp1.connect(hp2); hp2.connect(seaGain); seaGain.connect(AN.master);
+    AN.seaEl = seaEl; AN.seaSrc = seaSrc; AN.seaGain = seaGain;
+  }
+
+  AN.probeOsc = AX.createOscillator(); AN.probeOsc.type = 'sine'; AN.probeOsc.frequency.value = 20;
+  AN.probeGainL = AX.createGain(); AN.probeGainL.gain.value = 0;
+  AN.probeGainR = AX.createGain(); AN.probeGainR.gain.value = 0;
+  AN.probeOsc.connect(AN.probeGainL); AN.probeOsc.connect(AN.probeGainR);
+  AN.probeGainL.connect(AN.merger, 0, 0); AN.probeGainR.connect(AN.merger, 0, 1);
+  AN.probeOsc.start();
+}
+function hannCurve(N, rising) {
+  const c = new Float32Array(N);
+  for (let i = 0; i < N; i++) c[i] = rising ? 0.5 * (1 - Math.cos(Math.PI * i / (N - 1))) : 0.5 * (1 + Math.cos(Math.PI * i / (N - 1)));
+  return c;
+}
+const HANN_N = 32, HANN_RISE = hannCurve(HANN_N, true), HANN_FALL = hannCurve(HANN_N, false);
+
+function scheduleDrift(centreHz, startTime, spanS, prng) {
+  const plan = [];
+  let t = startTime;
+  AN.probeOsc.frequency.setValueAtTime(centreHz, t);
+  while (t < startTime + spanS) {
+    t += DRIFT_SEG_MIN_S + prng() * (DRIFT_SEG_MAX_S - DRIFT_SEG_MIN_S);
+    const capped = Math.min(t, startTime + spanS);
+    const target = centreHz * (1 + (prng() * 2 - 1) * SES.driftDepth);
+    AN.probeOsc.frequency.linearRampToValueAtTime(target, capped);
+    plan.push({ at: +(capped - startTime).toFixed(3), hz: +target.toFixed(1) });
+  }
+  return plan;
+}
+// Very short fades: the whole probe window is often only ~1s, so a fade that's too long would eat
+// into the pre- or post-flash quiet time the timing math assumes is available.
+function startProbe(freq, ear, drift, probeMs) {
+  if (!AX) return { tL: 0, tR: 0, plan: null };
+  const now = AX.currentTime;
+  SES.probeFreq = freq; SES.probeStartAudio = now;
+  const lin = probeLinFor(freq);
+  const tL = ear === 'left' ? lin : 0, tR = ear === 'right' ? lin : 0;
+  AN.probeOsc.frequency.cancelScheduledValues(now);
+  let plan = null;
+  const spanS = probeMs / 1000 + 0.1;
+  if (drift === 'drift') plan = scheduleDrift(freq, now, spanS, SES.prng);
+  else AN.probeOsc.frequency.setValueAtTime(freq, now);
+  const fadeDur = Math.min(0.05, Math.max(0.005, 2 / freq));
+  AN.probeGainL.gain.cancelScheduledValues(now);
+  AN.probeGainR.gain.cancelScheduledValues(now);
+  if (tL !== 0) AN.probeGainL.gain.setValueCurveAtTime(HANN_RISE.map(v => v * tL), now, fadeDur); else AN.probeGainL.gain.setValueAtTime(0, now);
+  if (tR !== 0) AN.probeGainR.gain.setValueCurveAtTime(HANN_RISE.map(v => v * tR), now, fadeDur); else AN.probeGainR.gain.setValueAtTime(0, now);
+  return { tL, tR, plan };
+}
+function stopProbe(tL, tR) {
+  if (!AX) return;
+  const now = AX.currentTime, freq = SES.probeFreq || 1000;
+  const fadeDur = Math.min(0.05, Math.max(0.005, 2 / freq));
+  AN.probeGainL.gain.cancelScheduledValues(now);
+  AN.probeGainR.gain.cancelScheduledValues(now);
+  const start = now + 0.003;
+  if (tL !== 0) { AN.probeGainL.gain.setValueAtTime(tL, start); AN.probeGainL.gain.setValueCurveAtTime(HANN_FALL.map(v => v * tL), start, fadeDur); }
+  else AN.probeGainL.gain.setValueAtTime(0, now);
+  if (tR !== 0) { AN.probeGainR.gain.setValueAtTime(tR, start); AN.probeGainR.gain.setValueCurveAtTime(HANN_FALL.map(v => v * tR), start, fadeDur); }
+  else AN.probeGainR.gain.setValueAtTime(0, now);
+  AN.probeGainL.gain.setValueAtTime(0, start + fadeDur + 0.01);
+  AN.probeGainR.gain.setValueAtTime(0, start + fadeDur + 0.01);
+}
+function stopProbeCur() { stopProbe(curProbeGains.tL, curProbeGains.tR); curProbeGains = { tL: 0, tR: 0 }; }
+
+// ══════════════════════════ AGGRESSIVE-MODE AUDIO ══════════════════════════
+// Aggressive trials each get their own disposable oscillator(s) + gain nodes, created fresh and
+// torn down at the end of the trial — unlike the persistent AN.probeOsc used by fixed/random,
+// which only ever needs one steady or drifting tone. That keeps the five sampling functions below
+// (including a variable number of simultaneous tones for multi-tone) simple, at the cost of a
+// little node churn, which is cheap relative to a ~1s trial.
+const AGG_FN_TYPES = ['lin-sweep', 'triangle', 'quadratic', 'white-noise', 'multi-tone'];
+function pickAggFn() { return AGG_FN_TYPES[Math.floor(SES.prng() * AGG_FN_TYPES.length)]; }
+function logUniformDraw(lo, hi) {
+  const a = Math.log(lo), b = Math.log(hi);
+  return Math.exp(a + SES.prng() * (b - a));
+}
+// Width first (log-uniform over the configured width range), then a centre drawn log-uniformly
+// from whatever sub-range keeps the whole band inside the outer bound — exactly as specified.
+function drawAggressiveBand() {
+  const outerMin = SES.aggOuterMin, outerMax = SES.aggOuterMax;
+  let width = logUniformDraw(SES.aggWidthMin, SES.aggWidthMax);
+  width = Math.min(width, (outerMax - outerMin) * 0.98);
+  const halfW = width / 2;
+  const centerLo = outerMin + halfW, centerHi = Math.max(outerMax - halfW, centerLo * 1.0001);
+  const center = logUniformDraw(centerLo, centerHi);
+  return { lo: center - halfW, hi: center + halfW, center, width };
+}
+function scheduleAggFreq(osc, fnType, band, startTime, spanS) {
+  const up = SES.prng() < 0.5;
+  const a = up ? band.lo : band.hi, b = up ? band.hi : band.lo;
+  if (fnType === 'lin-sweep') {
+    osc.frequency.setValueAtTime(a, startTime);
+    osc.frequency.linearRampToValueAtTime(b, startTime + spanS);
+    return { shape: 'lin-sweep', from: +a.toFixed(1), to: +b.toFixed(1) };
+  }
+  if (fnType === 'triangle') {
+    const half = spanS / 2;
+    osc.frequency.setValueAtTime(a, startTime);
+    osc.frequency.linearRampToValueAtTime(b, startTime + half);
+    osc.frequency.linearRampToValueAtTime(a, startTime + spanS);
+    return { shape: 'triangle', from: +a.toFixed(1), to: +b.toFixed(1) };
+  }
+  if (fnType === 'quadratic') {
+    const decel = SES.prng() < 0.5;
+    const N = 40, curve = new Float32Array(N);
+    for (let i = 0; i < N; i++) { const t = i / (N - 1); const s = decel ? 1 - (1 - t) * (1 - t) : t * t; curve[i] = a + (b - a) * s; }
+    osc.frequency.setValueCurveAtTime(curve, startTime, spanS);
+    return { shape: 'quadratic', decel, from: +a.toFixed(1), to: +b.toFixed(1) };
+  }
+  // white-noise: independent random jumps within the band, joined with short linear ramps so
+  // they glide rather than click — "noise-like" because each target is an independent draw, not
+  // a random walk from the previous one.
+  const segMin = 0.03, segMax = 0.07;
+  let t = startTime;
+  osc.frequency.setValueAtTime(band.lo + SES.prng() * (band.hi - band.lo), t);
+  while (t < startTime + spanS) {
+    t += segMin + SES.prng() * (segMax - segMin);
+    const capped = Math.min(t, startTime + spanS);
+    osc.frequency.linearRampToValueAtTime(band.lo + SES.prng() * (band.hi - band.lo), capped);
+  }
+  return { shape: 'white-noise' };
+}
+let curAggHandle = null;
+function startAggressiveProbe(band, ear, fnType, probeMs) {
+  if (!AX) return null;
+  const now = AX.currentTime;
+  // Most-restrictive cap across the band's extremes and centre, since a sweep or noise trial can
+  // visit any of them.
+  const capDb = Math.min(levelCapDb(band.lo), levelCapDb(band.center), levelCapDb(band.hi));
+  const requestedDb = Math.min(SES.levelDb, capDb);
+  const totalLin = Math.min(dbToLin(requestedDb), headroomLin());
+  const spanS = probeMs / 1000;
+  const fadeDur = Math.min(0.05, Math.max(0.005, 2 / Math.max(20, band.lo)));
+
+  const trialGainL = AX.createGain(); trialGainL.gain.value = 0;
+  const trialGainR = AX.createGain(); trialGainR.gain.value = 0;
+  const tL = ear === 'left' ? totalLin : 0, tR = ear === 'right' ? totalLin : 0;
+  if (tL !== 0) trialGainL.gain.setValueCurveAtTime(HANN_RISE.map(v => v * tL), now, fadeDur); else trialGainL.gain.setValueAtTime(0, now);
+  if (tR !== 0) trialGainR.gain.setValueCurveAtTime(HANN_RISE.map(v => v * tR), now, fadeDur); else trialGainR.gain.setValueAtTime(0, now);
+  trialGainL.connect(AN.merger, 0, 0); trialGainR.connect(AN.merger, 0, 1);
+
+  // Multi-tone divides by n (not sqrt(n)) so the worst-case in-phase sum of all tones still can't
+  // exceed totalLin — a peak-safety margin over a perceptual-loudness match.
+  const n = fnType === 'multi-tone' ? (2 + Math.floor(SES.prng() * 3)) : 1;
+  const oscList = [], eventsPlan = [];
+  for (let i = 0; i < n; i++) {
+    const osc = AX.createOscillator(); osc.type = 'sine';
+    const perGain = AX.createGain(); perGain.gain.value = 1 / n;
+    osc.connect(perGain); perGain.connect(trialGainL); perGain.connect(trialGainR);
+    if (fnType === 'multi-tone') {
+      const f = band.lo + SES.prng() * (band.hi - band.lo);
+      osc.frequency.value = f;
+      eventsPlan.push({ shape: 'static', hz: +f.toFixed(1) });
+    } else {
+      osc.frequency.value = band.center;
+      eventsPlan.push(scheduleAggFreq(osc, fnType, band, now, spanS));
+    }
+    osc.start(now);
+    oscList.push(osc);
+  }
+  return { tL, tR, trialGainL, trialGainR, oscList, fadeDur, band, fnType, eventsPlan };
+}
+function stopAggressiveProbe(handle) {
+  if (!AX || !handle) return;
+  const now = AX.currentTime;
+  const { tL, tR, trialGainL, trialGainR, oscList, fadeDur } = handle;
+  const start = now + 0.003;
+  if (tL !== 0) { trialGainL.gain.setValueAtTime(tL, start); trialGainL.gain.setValueCurveAtTime(HANN_FALL.map(v => v * tL), start, fadeDur); }
+  else trialGainL.gain.setValueAtTime(0, now);
+  if (tR !== 0) { trialGainR.gain.setValueAtTime(tR, start); trialGainR.gain.setValueCurveAtTime(HANN_FALL.map(v => v * tR), start, fadeDur); }
+  else trialGainR.gain.setValueAtTime(0, now);
+  const stopAt = start + fadeDur + 0.02;
+  oscList.forEach(o => { try { o.stop(stopAt); } catch (e) {} });
+  setTimeout(() => {
+    oscList.forEach(o => { try { o.disconnect(); } catch (e) {} });
+    try { trialGainL.disconnect(); trialGainR.disconnect(); } catch (e) {}
+  }, Math.ceil((stopAt - now) * 1000) + 60);
+}
+
+function silenceAllNow() {
+  if (!AX) return;
+  const now = AX.currentTime;
+  [AN.probeGainL, AN.probeGainR, AN.seaGain].forEach(g => { if (!g) return; g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(0, now); });
+  if (curAggHandle) {
+    const h = curAggHandle;
+    [h.trialGainL, h.trialGainR].forEach(g => { if (!g) return; g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(0, now); });
+    h.oscList.forEach(o => { try { o.stop(now); } catch (e) {} });
+  }
+}
+function destroyAudio() {
+  silenceAllNow();
+  if (AN.seaEl) { try { AN.seaEl.pause(); } catch (e) {} AN.seaEl.remove(); }
+  if (AX) { AX.close().catch(() => {}); AX = null; }
+  AN = {};
+}
+
+// ══════════════════════════ CONFIG-SCREEN PREVIEWS ══════════════════════════
+let previewAX = null, previewNodes = null;
+async function toggleSeaPreview() {
+  const btn = el('btn-preview-sea');
+  if (previewAX) { stopSeaPreview(); return; }
+  btn.disabled = true; btn.textContent = '⏳…';
+  try {
+    previewAX = new (window.AudioContext || window.webkitAudioContext)();
+    if (previewAX.state === 'suspended') await previewAX.resume();
+    const seaEl = createSeaAudioEl();
+    await seaEl.play();
+    const src = previewAX.createMediaElementSource(seaEl);
+    const hp1 = previewAX.createBiquadFilter(); hp1.type = 'highpass'; hp1.frequency.value = SEA_HP_HZ;
+    const hp2 = previewAX.createBiquadFilter(); hp2.type = 'highpass'; hp2.frequency.value = SEA_HP_HZ;
+    const g = previewAX.createGain(); g.gain.value = 0;
+    src.connect(hp1); hp1.connect(hp2); hp2.connect(g); g.connect(previewAX.destination);
+    g.gain.setTargetAtTime(dbToLin(+el('cfg-seadb').value), previewAX.currentTime, 0.2);
+    previewNodes = { el: seaEl, g };
+    btn.disabled = false; btn.textContent = '⏸ Stop';
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '🔊 Preview';
+    alert('Preview failed: ' + err.message);
+    if (previewAX) { previewAX.close().catch(() => {}); previewAX = null; }
+  }
+}
+function stopSeaPreview() {
+  if (previewNodes) {
+    const now = previewAX.currentTime;
+    previewNodes.g.gain.cancelScheduledValues(now);
+    previewNodes.g.gain.setTargetAtTime(0, now, 0.15);
+    const nodes = previewNodes, ax = previewAX;
+    setTimeout(() => { try { nodes.el.pause(); } catch (e) {} nodes.el.remove(); ax?.close().catch(() => {}); }, 350);
+    previewAX = null; previewNodes = null;
+  } else if (previewAX) { previewAX.close().catch(() => {}); previewAX = null; }
+  const btn = el('btn-preview-sea');
+  if (btn) { btn.textContent = '🔊 Preview'; btn.disabled = false; }
+}
+
+let pvAX = null, pvNodes = null;
+async function togglePreview() {
+  const btn = el('btn-preview');
+  if (pvAX) { stopPreview(); return; }
+  try {
+    pvAX = new (window.AudioContext || window.webkitAudioContext)();
+    if (pvAX.state === 'suspended') await pvAX.resume();
+    const freq = +el('cfg-preview-hz').value || 1000;
+    const lin = probeLinFor(freq);
+    const osc = pvAX.createOscillator(); osc.type = 'sine'; osc.frequency.value = freq;
+    const g = pvAX.createGain(); g.gain.value = 0;
+    osc.connect(g); g.connect(pvAX.destination); osc.start();
+    g.gain.setTargetAtTime(lin, pvAX.currentTime, Math.max(0.03, 2 / freq));
+    pvNodes = { osc, g };
+    btn.textContent = '⏸ Stop';
+  } catch (err) {
+    stopPreview();
+    alert('Preview failed: ' + err.message);
+  }
+}
+function stopPreview() {
+  if (pvNodes) {
+    const now = pvAX.currentTime;
+    pvNodes.g.gain.cancelScheduledValues(now);
+    pvNodes.g.gain.setTargetAtTime(0, now, 0.05);
+    const nodes = pvNodes, ax = pvAX;
+    setTimeout(() => { try { nodes.osc.stop(); } catch (e) {} ax.close().catch(() => {}); }, 200);
+  } else if (pvAX) { pvAX.close().catch(() => {}); }
+  pvAX = null; pvNodes = null;
+  const btn = el('btn-preview'); if (btn) btn.textContent = '▶ Preview';
+}
+
+// ══════════════════════════ CONFIG UI WIRING ══════════════════════════
+function updateLevels() {
+  const hr = headroomLin();
+  const cap20 = levelCapDb(100), capMid = levelCapDb(1000), capHi = levelCapDb(10000);
+  const requested = +el('cfg-level').value;
+  el('lbl-level').innerHTML =
+    `${requested} dBFS requested → &lt;300&nbsp;Hz: <strong>${Math.min(requested, cap20).toFixed(0)} dBFS</strong>, ` +
+    `300&nbsp;Hz–6&nbsp;kHz: <strong>${Math.min(requested, capMid).toFixed(0)} dBFS</strong>, ` +
+    `&gt;6&nbsp;kHz: <strong>${Math.min(requested, capHi).toFixed(0)} dBFS</strong>` +
+    (el('cfg-sea').checked ? ` (headroom ceiling ${linToDb(hr).toFixed(1)} dBFS)` : '');
+  if (el('cfg-sea').checked) {
+    el('sea-label').textContent = `${el('cfg-seadb').value} dBFS · headroom left for probe: ${linToDb(hr).toFixed(1)} dBFS`;
+  }
+  updateEstimate();
+}
+function updateEstimate() {
+  const mode = currentMode();
+  const probeMs = +el('cfg-probems').value || 1000;
+  const prerollAvgS = ((+el('cfg-preroll-min').value || 1) + (+el('cfg-preroll-max').value || 3)) / 2;
+  const perTrialS = prerollAvgS + probeMs / 1000 + 3 + (INTERTRIAL_GAP_MIN_MS + INTERTRIAL_GAP_MAX_MS) / 2000;
+  let real;
+  if (mode === 'fixed') {
+    const perCell = +el('cfg-percell').value || 2;
+    real = freqList.length * DRIFTS.length * EARS.length * perCell;
+  } else if (mode === 'random') {
+    real = +el('cfg-randtotal').value || 48;
+  } else {
+    real = +el('cfg-aggtotal').value || 40;
+  }
+  const sham = Math.max(4, Math.round(real * SHAM_FRACTION));
+  const total = real + sham + BASELINE_TRIALS;
+  el('estimate-txt').innerHTML =
+    `<strong>${real} real + ${sham} silent sham + ${BASELINE_TRIALS} opening baseline = ${total} trials.</strong> ` +
+    `Rough estimate ~${Math.round(total * perTrialS / 60)} min at typical response speed.` +
+    (mode === 'fixed' ? ` Each of the ${freqList.length * 4} fixed conditions gets ${+el('cfg-percell').value || 2} repeats — ` +
+      `enough for a first look at the repeat-number trend, more if you want it sharper.` : '');
+}
+renderFreqList();
+updateLevels();
+
+// ══════════════════════════ RANDOM DRAWS ══════════════════════════
+function shuffleInPlace(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(SES.prng() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+function drawRandomFreq() {
+  const lo = SES.randMin, hi = SES.randMax;
+  if (!SES.randLog) return lo + SES.prng() * (hi - lo);
+  const a = Math.log(lo), b = Math.log(hi);
+  return Math.exp(a + SES.prng() * (b - a));
+}
+function drawDigits(n) {
+  let s = '';
+  for (let i = 0; i < n; i++) s += Math.floor(SES.prng() * 10);
+  return s;
+}
+function fmtHz(v) { return v >= 1000 ? (Math.round(v / 100) / 10) + 'k' : Math.round(v).toString(); }
+function logBins(minHz, maxHz, ratio) {
+  const bins = [];
+  let lo = Math.max(1, minHz || 20);
+  const hi_ = maxHz || 20000;
+  while (lo < hi_) {
+    const hi = Math.min(hi_, lo * ratio);
+    bins.push({ lo, hi, label: `${fmtHz(lo)}–${fmtHz(hi)} Hz` });
+    lo = hi;
+  }
+  return bins;
+}
+function octaveBins(minHz, maxHz) { return logBins(minHz, maxHz, 2); }
+
+// ══════════════════════════ TRIAL QUEUES ══════════════════════════
+function buildFixedQueue() {
+  const perCell = SES.perCell;
+  const q = [];
+  SES.freqList.forEach(freq => DRIFTS.forEach(drift => EARS.forEach(ear => {
+    for (let i = 0; i < perCell; i++) q.push({ freq, drift, ear, isSham: false });
+  })));
+  const nSham = Math.max(4, Math.round(q.length * SHAM_FRACTION));
+  for (let i = 0; i < nSham; i++) q.push({ freq: null, drift: null, ear: null, isSham: true });
+  return shuffleInPlace(q);
+}
+function buildRandomQueue() {
+  const total = SES.randTotal;
+  const nSham = Math.max(4, Math.round(total * SHAM_FRACTION));
+  const nReal = total - nSham;
+  const q = [];
+  for (let i = 0; i < nReal; i++) {
+    q.push({
+      freq: +drawRandomFreq().toFixed(1),
+      drift: SES.prng() < 0.5 ? 'steady' : 'drift',
+      ear: SES.prng() < 0.5 ? 'left' : 'right',
+      isSham: false
+    });
+  }
+  for (let i = 0; i < nSham; i++) q.push({ freq: null, drift: null, ear: null, isSham: true });
+  return shuffleInPlace(q);
+}
+function buildAggressiveQueue() {
+  const total = SES.aggTotal;
+  const nSham = Math.max(4, Math.round(total * SHAM_FRACTION));
+  const nReal = total - nSham;
+  const q = [];
+  for (let i = 0; i < nReal; i++) {
+    const band = drawAggressiveBand();
+    q.push({
+      freq: +band.center.toFixed(1), band, fnType: pickAggFn(),
+      ear: SES.prng() < 0.5 ? 'left' : 'right',
+      isSham: false, isAggressive: true
+    });
+  }
+  for (let i = 0; i < nSham; i++) q.push({ freq: null, drift: null, ear: null, isSham: true });
+  return shuffleInPlace(q);
+}
+
+// ══════════════════════════ SCORING ══════════════════════════
+function scoreExact(actual, entered) {
+  if (!entered) return false;
+  const e = entered.replace(/\D/g, '');
+  return e.length === actual.length && e === actual;
+}
+function scoreDigits(actual, entered) {
+  if (!entered) return 0;
+  const e = entered.replace(/\D/g, '');
+  let n = 0;
+  for (let i = 0; i < actual.length; i++) if (e[i] === actual[i]) n++;
+  return n;
+}
+
+// ══════════════════════════ ONE TRIAL ══════════════════════════
+// The fixation dot is on screen, unchanged, through the pre-roll and through the probe both before
+// and after the flash. Nothing about the display ever differs between a real trial and a sham, or
+// between one condition and another, except the flash itself and its content — never its timing
+// relative to anything the participant can see.
+async function runTrial(trial, n, total) {
+  showScreen('s-main');
+  el('main-trial-n').textContent = n;
+  el('main-trial-total').textContent = total;
+  el('resp-area').style.display = 'none';
+  el('fix-dot').style.display = 'inline';
+  el('digit-display').style.display = 'none';
+  el('digit-display').textContent = '';
+
+  const prerollS = SES.prerollMinS + SES.prng() * (SES.prerollMaxS - SES.prerollMinS);
+  await sleep(prerollS * 1000); checkAbort();
+
+  const digits = drawDigits(SES.nDigits);
+  const flashMs = Math.min(SES.probeMs - 20, SES.flashMs);
+  const flashDelayMs = Math.max(0, (SES.probeMs - flashMs) / 2);
+
+  const t0 = performance.now();
+  let plan = null;
+  if (!trial.isSham) {
+    if (trial.isAggressive) { curAggHandle = startAggressiveProbe(trial.band, trial.ear, trial.fnType, SES.probeMs); plan = curAggHandle ? curAggHandle.eventsPlan : null; }
+    else { curProbeGains = startProbe(trial.freq, trial.ear, trial.drift, SES.probeMs); plan = curProbeGains.plan; }
+  }
+  logSes('probe_start', { n, isSham: trial.isSham, freq: trial.freq, ear: trial.ear, drift: trial.drift,
+                          isBaseline: !!trial.isBaseline, digits, probeMs: SES.probeMs, flashMs,
+                          fnType: trial.fnType, band: trial.band });
+
+  await sleep(flashDelayMs); checkAbort();
+  el('digit-display').textContent = digits;
+  el('digit-display').style.display = 'inline';
+  el('fix-dot').style.display = 'none';
+  await sleep(flashMs); checkAbort();
+  el('digit-display').style.display = 'none';
+  el('digit-display').textContent = '';
+  el('fix-dot').style.display = 'inline';
+
+  await sleep(Math.max(0, SES.probeMs - flashDelayMs - flashMs)); checkAbort();
+  if (!trial.isSham) { if (trial.isAggressive) stopAggressiveProbe(curAggHandle); else stopProbeCur(); }
+  await sleep(60); checkAbort();   // let the fade finish before the response tap can be heard as a click
+
+  el('resp-area').style.display = 'block';
+  el('digit-input').value = '';
+  const resp = await waitForChoice(['resp-yes', 'resp-no']);
+  checkAbort();
+  const entered = el('digit-input').value.trim();
+  el('resp-area').style.display = 'none';
+  logSes('legibility_response', { n, response: resp, entered });
+
+  const guess = await showEarGuess();
+  logSes('ear_guess', { n, isSham: trial.isSham, actualEar: trial.ear, guess });
+  checkAbort();
+
+  const gapMs = INTERTRIAL_GAP_MIN_MS + SES.prng() * (INTERTRIAL_GAP_MAX_MS - INTERTRIAL_GAP_MIN_MS);
+  await sleep(gapMs); checkAbort();
+
+  return Object.assign({}, trial, {
+    n, digits, entered, subjective: resp, earGuess: guess,
+    exactMatch: scoreExact(digits, entered), digitScore: scoreDigits(digits, entered),
+    listenMs: Math.round(performance.now() - t0), driftPlan: plan
+  });
+}
+function showEarGuess() {
+  showOverlay('guess-overlay');
+  return waitForChoice(['guess-left', 'guess-right', 'guess-unsure']).then(v => { hideOverlay('guess-overlay'); return v; });
+}
+
+// ══════════════════════════ ADAPTIVE SHAM MONITORING ══════════════════════════
+// "Symptomatic" here is "could not read the number with nothing playing" — same escalation
+// pattern as the previous tool: one failure quietly schedules a re-check soon; two failures in a
+// row stops and asks, because at that point the whole session's legibility floor has likely moved.
+const SHAM_FAIL = t => t.subjective === 'no';
+
+async function handleShamResult(done, queue, i) {
+  const fail = SHAM_FAIL(done);
+  SES.shamHistory.push(fail);
+  const h = SES.shamHistory;
+  const twoInARow = fail && h.length >= 2 && h[h.length - 2];
+  logSes('sham_check', { n: done.n, failed: fail, twoInARow });
+
+  if (twoInARow) {
+    SES.shamAbortPrompts++;
+    el('gate-title').textContent = 'Two silent trials in a row came back unreadable';
+    el('gate-text').textContent =
+      'Nothing was playing on either of the last two sham trials, and you could not read the number ' +
+      'either time. That usually means something about attention, fatigue or timing has shifted for ' +
+      'the whole session, not that one flash was unlucky — legibility rates from here on will be hard ' +
+      'to interpret. Stopping keeps everything collected so far; continuing risks a session that reads ' +
+      'like noise.';
+    showOverlay('gate-overlay');
+    const go = await waitForChoice(['gate-go', 'gate-stop']);
+    hideOverlay('gate-overlay');
+    logSes('sham_run_decision', { decision: go === 'go' ? 'continued' : 'stopped' });
+    if (go !== 'go') { SES.stoppedBySham = true; return 'stop'; }
+  } else if (fail) {
+    const gap = SHAM_RECHECK_MIN_GAP + Math.floor(SES.prng() * (SHAM_RECHECK_MAX_GAP - SHAM_RECHECK_MIN_GAP + 1));
+    const at = Math.min(queue.length, i + 1 + gap);
+    queue.splice(at, 0, { freq: null, drift: null, ear: null, isSham: true, isRecheck: true });
+    SES.shamRecheckCount++;
+    logSes('sham_recheck_scheduled', { afterN: done.n, insertedAt: at, gap });
+  }
+  return 'continue';
+}
+
+async function runBaselineGate() {
+  const out = [];
+  for (let i = 0; i < BASELINE_TRIALS; i++) {
+    const t = await runTrial({ freq: null, drift: null, ear: null, isSham: true, isBaseline: true }, i + 1, BASELINE_TRIALS);
+    out.push(t); SES.baseline.push(t);
+  }
+  const fails = out.filter(SHAM_FAIL).length;
+  logSes('baseline_gate', { n: out.length, failed: fails });
+  if (fails === 0) { SES.gate = 'clean'; return true; }
+  el('gate-title').textContent = fails === out.length ? 'Could not read the number on any opening trial' : 'Shaky opening baseline';
+  el('gate-text').textContent =
+    `${fails} of ${out.length} opening silent trials came back unreadable. ` +
+    (fails === out.length
+      ? 'With every silent trial failing, legibility cannot separate a probe from no probe at all — stopping now costs only the last few minutes.'
+      : 'The session is still usable, but the sham arm will have to carry more of the interpretation.');
+  showOverlay('gate-overlay');
+  const go = await waitForChoice(['gate-go', 'gate-stop']);
+  hideOverlay('gate-overlay');
+  SES.gate = go === 'go' ? 'continued' : 'stopped';
+  logSes('baseline_gate_decision', { decision: SES.gate });
+  return go === 'go';
+}
+
+async function runMainTest() {
+  if (!(await runBaselineGate())) return;
+  const queue = SES.mode === 'fixed' ? buildFixedQueue() : SES.mode === 'random' ? buildRandomQueue() : buildAggressiveQueue();
+  let i = 0;
+  while (i < queue.length) {
+    await waitIfPaused();
+    checkAbort();
+    const done = await runTrial(queue[i], i + 1, queue.length);
+    const key = done.isSham ? 'sham' : `${done.freq}|${done.drift}|${done.ear}`;
+    SES.repeatCounters[key] = (SES.repeatCounters[key] || 0) + 1;
+    done.repeatIndex = SES.repeatCounters[key];
+    SES.trials.push(done);
+    if (done.isSham) {
+      const verdict = await handleShamResult(done, queue, i);
+      if (verdict === 'stop') break;
+    }
+    i++;
+  }
+}
+
+// ══════════════════════════ UI HELPERS ══════════════════════════
+function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); el(id).classList.add('active'); }
+function showOverlay(id) { el(id).classList.add('vis'); }
+function hideOverlay(id) { el(id).classList.remove('vis'); }
+
+// ══════════════════════════ ORCHESTRATION ══════════════════════════
+function resetSessionState() {
+  ABORTED = false;
+  abortHandlers = [];
+  pauseGate = null;
+  curProbeGains = { tL: 0, tR: 0 };
+  curAggHandle = null;
+  SES = blankSession();
+}
+async function handleStart() {
+  resetSessionState();
+  el('btn-start').disabled = true; el('btn-start').textContent = 'Starting…';
+  stopSeaPreview(); stopPreview();
+  SES.seed = (Date.now() ^ 0x9e3779b9) >>> 0;
+  SES.prng = mulberry32(SES.seed);
+  SES.startWall = performance.now();
+  SES.mode = currentMode();
+  SES.freqList = freqList.slice();
+  SES.perCell = +el('cfg-percell').value || 2;
+  SES.randMin = +el('cfg-randmin').value || 20;
+  SES.randMax = +el('cfg-randmax').value || 20000;
+  SES.randLog = el('cfg-randlog').checked;
+  SES.randTotal = +el('cfg-randtotal').value || 48;
+  SES.aggOuterMin = +el('cfg-agg-outermin').value || 20;
+  SES.aggOuterMax = +el('cfg-agg-outermax').value || 20000;
+  SES.aggWidthMin = +el('cfg-agg-widthmin').value || 1;
+  SES.aggWidthMax = +el('cfg-agg-widthmax').value || 10000;
+  SES.aggTotal = +el('cfg-aggtotal').value || 40;
+  SES.seaOn = el('cfg-sea').checked;
+  SES.seaDb = +el('cfg-seadb').value;
+  SES.levelDb = +el('cfg-level').value;
+  SES.driftDepth = DRIFT_DEPTH;
+  SES.nDigits = +el('cfg-digits').value || 3;
+  SES.flashMs = +el('cfg-flashms').value || 500;
+  SES.probeMs = +el('cfg-probems').value || 1000;
+  SES.prerollMinS = +el('cfg-preroll-min').value || 1;
+  SES.prerollMaxS = Math.max(SES.prerollMinS, +el('cfg-preroll-max').value || 3);
+  el('digit-input').setAttribute('maxlength', SES.nDigits);
+  el('digit-display').style.fontSize = (+el('cfg-fontsize').value || 64) + 'px';
+  el('btn-pause').style.display = 'block'; el('btn-pause').textContent = '⏸ Pause';
+  logSes('config', {
+    mode: SES.mode, freqList: SES.freqList, perCell: SES.perCell,
+    randMin: SES.randMin, randMax: SES.randMax, randLog: SES.randLog, randTotal: SES.randTotal,
+    aggOuterMin: SES.aggOuterMin, aggOuterMax: SES.aggOuterMax,
+    aggWidthMin: SES.aggWidthMin, aggWidthMax: SES.aggWidthMax, aggTotal: SES.aggTotal,
+    seaOn: SES.seaOn, seaDb: SES.seaDb, levelDb: SES.levelDb,
+    nDigits: SES.nDigits, flashMs: SES.flashMs, probeMs: SES.probeMs,
+    prerollMinS: SES.prerollMinS, prerollMaxS: SES.prerollMaxS
+  });
+  try {
+    await initAudioCtx();
+    await buildGraph();
+    try {
+      if (navigator.wakeLock) await withTimeout(navigator.wakeLock.request('screen'), 2000, 'wakeLock.request() stalled — continuing without it.');
+    } catch (e) {}
+    await runMainTest();
+  } catch (e) {
+    if (e.message !== 'SESSION_ABORTED') console.error(e);
+  } finally {
+    finishSession();
+  }
+}
+function emergencyStop() { triggerAbort(); silenceAllNow(); logSes('emergency_stop', {}); }
+function finishSession() {
+  silenceAllNow();
+  destroyAudio();
+  el('btn-pause').style.display = 'none';
+  buildReport();
+  showScreen('s-report');
+  el('btn-start').textContent = '▶ Begin';
+}
+function startNewSession() {
+  resetSessionState();
+  el('btn-start').textContent = '▶ Begin';
+  showScreen('s-intro');
+}
+
+// ══════════════════════════ FONT-SIZE CALIBRATION ══════════════════════════
+// Purely visual, no audio — runs before the audio engine even spins up. Uses the exact flash
+// duration configured for the real trials, so "smallest readable size" here matches what the
+// probe trials will actually be tested against, rather than a comfortable static-reading size.
+let calibSize = 64, calibToken = null;
+function startCalibration() {
+  calibSize = +el('cfg-fontsize').value || 64;
+  showScreen('s-calib');
+  updateCalibLabel();
+  runCalibFlashLoop();
+}
+function updateCalibLabel() {
+  el('calib-size-lbl').textContent = calibSize + 'px';
+  el('calib-digit').style.fontSize = calibSize + 'px';
+}
+function calibAdjust(delta) { calibSize = Math.max(16, Math.min(220, calibSize + delta)); updateCalibLabel(); }
+function rawSleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+async function runCalibFlashLoop() {
+  const myToken = {};
+  calibToken = myToken;
+  while (calibToken === myToken) {
+    el('calib-digit').textContent = '';
+    await rawSleep(900);
+    if (calibToken !== myToken) break;
+    const n = +el('cfg-digits').value || 3;
+    let s = ''; for (let i = 0; i < n; i++) s += Math.floor(Math.random() * 10);
+    el('calib-digit').textContent = s;
+    await rawSleep(+el('cfg-flashms').value || 500);
+    if (calibToken !== myToken) break;
+    el('calib-digit').textContent = '';
+  }
+}
+function finishCalibration() {
+  calibToken = null;
+  el('cfg-fontsize').value = calibSize;
+  handleStart();
+}
+
+// ══════════════════════════ STATISTICS ══════════════════════════
+function wilsonCI(k, n, z = 1.96) {
+  if (!n) return { p: null, lo: null, hi: null };
+  const p = k / n, z2 = z * z, d = 1 + z2 / n, c = p + z2 / (2 * n);
+  const a = z * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n);
+  return { p, lo: Math.max(0, (c - a) / d), hi: Math.min(1, (c + a) / d) };
+}
+function newcombeDiff(k1, n1, k2, n2) {
+  if (!n1 || !n2) return { d: null, lo: null, hi: null };
+  const a = wilsonCI(k1, n1), b = wilsonCI(k2, n2);
+  const d = k1 / n1 - k2 / n2;
+  const lo = d - Math.sqrt(Math.pow(k1 / n1 - a.lo, 2) + Math.pow(b.hi - k2 / n2, 2));
+  const hi = d + Math.sqrt(Math.pow(a.hi - k1 / n1, 2) + Math.pow(k2 / n2 - b.lo, 2));
+  return { d, lo: Math.max(-1, lo), hi: Math.min(1, hi) };
+}
+function lnFact(n) { let s = 0; for (let i = 2; i <= n; i++) s += Math.log(i); return s; }
+function hyperg(a, b, c, d) {
+  return Math.exp(lnFact(a + b) + lnFact(c + d) + lnFact(a + c) + lnFact(b + d)
+    - lnFact(a) - lnFact(b) - lnFact(c) - lnFact(d) - lnFact(a + b + c + d));
+}
+function fisherExact(a, b, c, d) {
+  if (a + b + c + d === 0) return null;
+  const obs = hyperg(a, b, c, d);
+  let p = 0;
+  const r1 = a + b, r2 = c + d, c1 = a + c;
+  for (let i = Math.max(0, c1 - r2); i <= Math.min(r1, c1); i++) {
+    const q = hyperg(i, r1 - i, c1 - i, r2 - c1 + i);
+    if (q <= obs * 1.0000001) p += q;
+  }
+  return Math.min(1, p);
+}
+function pct(v) { return v == null ? '—' : (v * 100).toFixed(0) + '%'; }
+function sgn(v) { return (v >= 0 ? '+' : '') + (v * 100).toFixed(0); }
+function pFmt(p) { return p == null ? '—' : p < 0.001 ? '<0.001' : p.toFixed(3); }
+
+// ══════════════════════════ REPORT ══════════════════════════
+const SUB = t => t.subjective === 'yes';
+const OBJ = t => t.exactMatch;
+
+// Green = legible, red = illegible, used as a stand-in for "symptomatic" since this tool measures
+// legibility rather than a severity rating.
+function heatColor(rate) {
+  if (rate == null) return 'rgba(255,255,255,0.04)';
+  const hue = 120 * (1 - rate);
+  return `hsl(${hue}, 65%, 32%)`;
+}
+function buildAggressiveHeatmap(real) {
+  const centerBins = logBins(SES.aggOuterMin, SES.aggOuterMax, 2);
+  const widthBins = logBins(SES.aggWidthMin, SES.aggWidthMax, 4);
+  let h = `<div class="rpt-section"><h3>2b · Legibility heat-map: band width × centre frequency</h3>
+    <p class="small">Colour is the <em>illegibility</em> rate — red worse, green better — so it reads
+    like a symptom map; each cell also shows its sample count. Rows are the band's total width;
+    columns are where its centre sits in the audible range. Empty cells got no trials at that
+    combination this session.</p>
+    <div style="overflow-x:auto"><table style="font-size:0.66rem"><tr><th>Width ＼ Centre</th>`;
+  centerBins.forEach(b => { h += `<th>${b.label}</th>`; });
+  h += `</tr>`;
+  widthBins.forEach(wb => {
+    h += `<tr><th>${wb.label}</th>`;
+    centerBins.forEach(cb => {
+      const rows = real.filter(t => t.band && t.band.width >= wb.lo && t.band.width < wb.hi && t.band.center >= cb.lo && t.band.center < cb.hi);
+      if (!rows.length) { h += `<td style="background:${heatColor(null)};text-align:center">—</td>`; return; }
+      const rate = rows.filter(t => !SUB(t)).length / rows.length;
+      h += `<td style="background:${heatColor(rate)};color:#fff;text-align:center;padding:4px 3px">${pct(rate)}<br><span style="opacity:.65">n=${rows.length}</span></td>`;
+    });
+    h += `</tr>`;
+  });
+  h += `</table></div></div>`;
+  return h;
+}
+
+function buildReport() {
+  const all = SES.trials;
+  const real = all.filter(t => !t.isSham);
+  const sham = all.filter(t => t.isSham);
+  const base = SES.baseline;
+  const silent = base.concat(sham);
+  let h = '';
+
+  // ── Validity verdict ──────────────────────────────────────────────
+  const kSubSil = silent.filter(SUB).length;
+  const subRateSil = silent.length ? kSubSil / silent.length : null;
+  const sc = wilsonCI(kSubSil, silent.length);
+  let vc, vt;
+  if (!real.length) { vc = 'v-bad'; vt = 'No real trials were completed — nothing to report.'; }
+  else if (!silent.length) { vc = 'v-bad'; vt = 'No silent trials ran, so there is no floor to judge legibility against.'; }
+  else if (subRateSil <= 0.5) {
+    vc = 'v-bad';
+    vt = `<strong>Treat this session as unusable.</strong> Only ${pct(subRateSil)} of silent trials (${kSubSil}/${silent.length}) were read even with nothing playing — the task itself was too hard or attention had lapsed for most of the session, so a legibility drop on a real trial can't be told apart from that.`;
+  } else if (subRateSil <= 0.8) {
+    vc = 'v-warn';
+    vt = `<strong>Interpret with care.</strong> ${pct(subRateSil)} (${kSubSil}/${silent.length}) of silent trials were read. Real effects need to clear this floor, not just beat 0%.`;
+  } else {
+    vc = 'v-ok';
+    vt = `<strong>Usable session.</strong> ${pct(subRateSil)} (${kSubSil}/${silent.length}) of silent trials were read — a solid floor for real trials to be compared against.`;
+  }
+  if (SES.gate === 'continued') vt += ` <span class="w">You chose to continue past a flagged opening baseline.</span>`;
+  h += `<div class="verdict ${vc}">${vt}</div>`;
+
+  // ── Sham/baseline floor detail ─────────────────────────────────────
+  h += `<div class="rpt-section"><h3>1 · Silent-trial floor</h3><table>
+    <tr><th>Group</th><th>n</th><th>Subjective read</th><th>Objective exact match</th><th>Mean digits correct</th></tr>`;
+  for (const [nm, r] of [['Opening baseline', base], ['Interspersed sham', sham], ['All silent', silent]]) {
+    const meanD = r.length ? r.reduce((a, t) => a + (t.digitScore || 0), 0) / r.length : null;
+    h += `<tr><td>${nm}</td><td>${r.length}</td><td>${pct(r.length ? r.filter(SUB).length / r.length : null)}</td>
+      <td>${pct(r.length ? r.filter(OBJ).length / r.length : null)}</td><td>${meanD == null ? '—' : meanD.toFixed(2)} / ${SES.nDigits}</td></tr>`;
+  }
+  h += `</table><p class="small mt">Every rate below should be read against the "all silent" line.
+    ${SES.shamRecheckCount ? `${SES.shamRecheckCount} extra sham${SES.shamRecheckCount === 1 ? '' : 's'} inserted mid-session after a single failed sham. ` : ''}
+    ${SES.shamAbortPrompts ? `${SES.shamAbortPrompts} prompt${SES.shamAbortPrompts === 1 ? '' : 's'} shown for two failed shams in a row` +
+      (SES.stoppedBySham ? ', and the session was <strong>stopped early</strong> — everything below reflects only the trials completed before then.' : ', and you chose to continue each time.') : ''}
+  </p></div>`;
+
+  if (SES.mode === 'fixed') {
+    // ── Per-condition table ──
+    h += `<div class="rpt-section"><h3>2 · Legibility by condition</h3><table>
+      <tr><th>Freq</th><th>Drift</th><th>Side</th><th>n</th><th>Subjective</th><th>Objective</th></tr>`;
+    SES.freqList.forEach(f => DRIFTS.forEach(d => EARS.forEach(e => {
+      const rows = real.filter(t => t.freq === f && t.drift === d && t.ear === e);
+      if (!rows.length) return;
+      h += `<tr><td>${f} Hz</td><td>${d}</td><td>${e}</td><td>${rows.length}</td>
+        <td>${pct(rows.filter(SUB).length / rows.length)}</td><td>${pct(rows.filter(OBJ).length / rows.length)}</td></tr>`;
+    })));
+    h += `</table></div>`;
+
+    // ── Laterality within frequency ──
+    h += `<div class="rpt-section"><h3>3 · Laterality within each frequency</h3><table>
+      <tr><th>Freq</th><th>Left</th><th>Right</th><th>L−R</th><th>95% CI</th><th>Fisher p</th></tr>`;
+    SES.freqList.forEach(f => {
+      const L = real.filter(t => t.freq === f && t.ear === 'left'), R = real.filter(t => t.freq === f && t.ear === 'right');
+      const kl = L.filter(SUB).length, kr = R.filter(SUB).length;
+      const dd = newcombeDiff(kl, L.length, kr, R.length);
+      h += `<tr><td>${f} Hz</td><td>${kl}/${L.length} (${pct(L.length ? kl / L.length : null)})</td>
+        <td>${kr}/${R.length} (${pct(R.length ? kr / R.length : null)})</td>
+        <td>${dd.d == null ? '—' : sgn(dd.d) + ' pts'}</td>
+        <td>${dd.d == null ? '—' : `${sgn(dd.lo)} to ${sgn(dd.hi)}`}</td>
+        <td>${pFmt(fisherExact(kl, L.length - kl, kr, R.length - kr))}</td></tr>`;
+    });
+    h += `</table></div>`;
+
+    // ── The habituation test: legibility vs. repeat number ──
+    const maxRep = Math.max(0, ...real.map(t => t.repeatIndex || 0));
+    h += `<div class="rpt-section"><h3>4 · Legibility vs. repeat number — the habituation test</h3>
+      <p class="small">Pooled across every condition, grouped by how many times you had already heard that
+      exact frequency+drift+side combination when this trial played. A rising trend here is the direct
+      signature of learning to discount a specific, repeated stimulus.</p>
+      <table><tr><th>Repeat #</th><th>n</th><th>Subjective</th><th>Objective</th><th>Mean digits</th></tr>`;
+    for (let r = 1; r <= maxRep; r++) {
+      const rows = real.filter(t => t.repeatIndex === r);
+      if (!rows.length) continue;
+      const meanD = rows.reduce((a, t) => a + (t.digitScore || 0), 0) / rows.length;
+      h += `<tr><td>${r}</td><td>${rows.length}</td><td>${pct(rows.filter(SUB).length / rows.length)}</td>
+        <td>${pct(rows.filter(OBJ).length / rows.length)}</td><td>${meanD.toFixed(2)}</td></tr>`;
+    }
+    h += `</table>`;
+
+    // First vs later exposures per condition — the cleaner two-bucket version of the same question.
+    const byKey = {};
+    real.forEach(t => { const k = `${t.freq}|${t.drift}|${t.ear}`; (byKey[k] = byKey[k] || []).push(t); });
+    const firstHalf = [], laterHalf = [];
+    Object.values(byKey).forEach(arr => {
+      arr.sort((a, b) => a.repeatIndex - b.repeatIndex);
+      const mid = Math.ceil(arr.length / 2);
+      firstHalf.push(...arr.slice(0, mid)); laterHalf.push(...arr.slice(mid));
+    });
+    const kf = firstHalf.filter(SUB).length, kl2 = laterHalf.filter(SUB).length;
+    const dd2 = newcombeDiff(kl2, laterHalf.length, kf, firstHalf.length);
+    h += `<p class="small mt"><strong>First exposure to each condition:</strong> ${kf}/${firstHalf.length} (${pct(firstHalf.length ? kf / firstHalf.length : null)}) read.
+      <strong>Later exposures to the same condition:</strong> ${kl2}/${laterHalf.length} (${pct(laterHalf.length ? kl2 / laterHalf.length : null)}) read.
+      Difference (later − first): ${dd2.d == null ? '—' : sgn(dd2.d) + ' pts'} ${dd2.d == null ? '' : `(95% CI ${sgn(dd2.lo)} to ${sgn(dd2.hi)})`}.
+      A positive, CI-excluding-zero gap here is direct evidence for habituation to specific, repeated stimuli.
+      Compare it against the random-sweep arm — which by construction never repeats a stimulus — run on a
+      different day with the same hardware.</p>
+
+      <table class="mt"><tr><th>Drift arm</th><th>Exposure</th><th>n</th><th>Subjective read</th></tr>`;
+    ['steady', 'drift'].forEach(dr => ['first', 'later'].forEach(when => {
+      const rows = (when === 'first' ? firstHalf : laterHalf).filter(t => t.drift === dr);
+      h += `<tr><td>${dr}</td><td>${when}</td><td>${rows.length}</td><td>${pct(rows.length ? rows.filter(SUB).length / rows.length : null)}</td></tr>`;
+    }));
+    h += `</table><p class="small mt">If the steady/drift gap is large on first exposure and shrinks on later
+      exposures, that is the specific version of the habituation hypothesis: not "you adapt to sound" in
+      general, but "you learn that <em>this drifting pattern</em> predicts a symptom that isn't dangerous."</p></div>`;
+
+  } else if (SES.mode === 'random') {
+    // ── RANDOM MODE ──
+    h += `<div class="rpt-section"><h3>2 · By construction: no repeated stimulus</h3>
+      <p class="small">Every real trial drew an independent random frequency, with independently randomised
+      drift and side, over ${SES.randMin}–${SES.randMax} Hz${SES.randLog ? ' (log-uniform)' : ''}. No two trials
+      are close to identical, so this arm is largely immune to learning tied to a specific, repeated sound.
+      Whatever pattern shows up below is a better candidate for something structural — compare it against a
+      fixed-list session's "first exposure" numbers (section 4 there) run on the same hardware.</p></div>`;
+
+    h += `<div class="rpt-section"><h3>3 · Legibility by frequency band</h3><table>
+      <tr><th>Band</th><th>n</th><th>Subjective</th><th>95% CI</th><th>Objective</th></tr>`;
+    octaveBins(SES.randMin, SES.randMax).forEach(b => {
+      const rows = real.filter(t => t.freq >= b.lo && t.freq < b.hi);
+      if (!rows.length) return;
+      const ks = rows.filter(SUB).length, c = wilsonCI(ks, rows.length);
+      h += `<tr><td>${b.label}</td><td>${rows.length}</td><td>${pct(c.p)}</td>
+        <td>${c.p == null ? '—' : `${pct(c.lo)}–${pct(c.hi)}`}</td>
+        <td>${pct(rows.length ? rows.filter(OBJ).length / rows.length : null)}</td></tr>`;
+    });
+    h += `</table></div>`;
+
+    h += `<div class="rpt-section"><h3>4 · Drift and side, pooled across the spectrum</h3><table>
+      <tr><th>Factor</th><th>Level</th><th>n</th><th>Subjective read</th><th>95% CI</th></tr>`;
+    DRIFTS.forEach(dr => { const rows = real.filter(t => t.drift === dr); const k = rows.filter(SUB).length; const c = wilsonCI(k, rows.length);
+      h += `<tr><td>Drift</td><td>${dr}</td><td>${rows.length}</td><td>${pct(c.p)}</td><td>${c.p == null ? '—' : `${pct(c.lo)}–${pct(c.hi)}`}</td></tr>`; });
+    EARS.forEach(e => { const rows = real.filter(t => t.ear === e); const k = rows.filter(SUB).length; const c = wilsonCI(k, rows.length);
+      h += `<tr><td>Side</td><td>${e}</td><td>${rows.length}</td><td>${pct(c.p)}</td><td>${c.p == null ? '—' : `${pct(c.lo)}–${pct(c.hi)}`}</td></tr>`; });
+    const S0 = real.filter(t => t.drift === 'steady'), D0 = real.filter(t => t.drift === 'drift');
+    const ks0 = S0.filter(SUB).length, kd0 = D0.filter(SUB).length;
+    h += `</table><p class="small mt">Drift−steady Fisher p = ${pFmt(fisherExact(kd0, D0.length - kd0, ks0, S0.length - ks0))}.</p></div>`;
+
+  } else {
+    // ── AGGRESSIVE-RANDOM MODE ──
+    h += `<div class="rpt-section"><h3>2 · By construction: fresh band + function every trial</h3>
+      <p class="small">Each trial drew an independent band — width log-uniform over
+      ${SES.aggWidthMin}–${SES.aggWidthMax} Hz, centred log-uniformly within ${SES.aggOuterMin}–${SES.aggOuterMax} Hz
+      so the band stays inside that bound — and an independent sampling function. Like the random-sweep arm,
+      there's essentially nothing here for a stimulus-specific prediction to lock onto.</p></div>`;
+
+    h += buildAggressiveHeatmap(real);
+
+    h += `<div class="rpt-section"><h3>3 · Legibility by sampling function</h3><table>
+      <tr><th>Function</th><th>n</th><th>Subjective</th><th>95% CI</th><th>Objective</th></tr>`;
+    AGG_FN_TYPES.forEach(fn => {
+      const rows = real.filter(t => t.fnType === fn);
+      if (!rows.length) return;
+      const k = rows.filter(SUB).length, c = wilsonCI(k, rows.length);
+      h += `<tr><td>${fn}</td><td>${rows.length}</td><td>${pct(c.p)}</td>
+        <td>${c.p == null ? '—' : `${pct(c.lo)}–${pct(c.hi)}`}</td>
+        <td>${pct(rows.length ? rows.filter(OBJ).length / rows.length : null)}</td></tr>`;
+    });
+    h += `</table></div>`;
+
+    h += `<div class="rpt-section"><h3>4 · Side, pooled across bands and functions</h3><table>
+      <tr><th>Side</th><th>n</th><th>Subjective read</th><th>95% CI</th></tr>`;
+    EARS.forEach(e => { const rows = real.filter(t => t.ear === e); const k = rows.filter(SUB).length; const c = wilsonCI(k, rows.length);
+      h += `<tr><td>${e}</td><td>${rows.length}</td><td>${pct(c.p)}</td><td>${c.p == null ? '—' : `${pct(c.lo)}–${pct(c.hi)}`}</td></tr>`; });
+    h += `</table></div>`;
+  }
+
+  // ── Ear-guess accuracy (all modes) ──
+  h += `<div class="rpt-section"><h3>5 · Could you name the side?</h3>
+    <p class="small">Asked on every trial including shams, so its presence never reveals which kind of trial
+    you just had. Silent trials have no correct answer and are shown as a "named a side anyway" control.</p>
+    <table><tr><th>Group</th><th>Committed</th><th>Can't-tell</th><th>Correct</th><th>Accuracy</th><th>95% CI</th></tr>`;
+  const groups = SES.mode === 'fixed'
+    ? SES.freqList.map(f => ({ label: `${f} Hz`, rows: real.filter(t => t.freq === f) }))
+    : SES.mode === 'random'
+      ? octaveBins(SES.randMin, SES.randMax).map(b => ({ label: b.label, rows: real.filter(t => t.freq >= b.lo && t.freq < b.hi) }))
+      : logBins(SES.aggOuterMin, SES.aggOuterMax, 2).map(b => ({ label: b.label, rows: real.filter(t => t.freq >= b.lo && t.freq < b.hi) }));
+  groups.concat([{ label: 'All real', rows: real }]).forEach(({ label, rows }) => {
+    if (!rows.length) return;
+    const com = rows.filter(t => t.earGuess === 'left' || t.earGuess === 'right');
+    const cor = com.filter(t => t.earGuess === t.ear).length;
+    const c = wilsonCI(cor, com.length);
+    h += `<tr><td>${label}</td><td>${com.length}/${rows.length}</td><td>${rows.length - com.length}</td>
+      <td>${cor}/${com.length}</td><td>${pct(c.p)}</td><td>${c.p == null ? '—' : `${pct(c.lo)}–${pct(c.hi)}`}</td></tr>`;
+  });
+  const silCom = silent.filter(t => t.earGuess === 'left' || t.earGuess === 'right');
+  h += `<tr><td>Silent</td><td>${silCom.length}/${silent.length}</td><td>${silent.length - silCom.length}</td>
+    <td colspan="3">no correct answer — named a side anyway on ${silCom.length}</td></tr>
+    </table></div>`;
+
+  // ── Subjective vs objective agreement ──
+  const yy = real.filter(t => t.subjective === 'yes' && t.exactMatch).length;
+  const yn = real.filter(t => t.subjective === 'yes' && !t.exactMatch).length;
+  const ny = real.filter(t => t.subjective === 'no' && t.exactMatch).length;
+  const nn = real.filter(t => t.subjective === 'no' && !t.exactMatch).length;
+  h += `<div class="rpt-section"><h3>6 · Subjective vs. objective agreement</h3><table>
+    <tr><th></th><th>Said "could read"</th><th>Said "couldn't read"</th></tr>
+    <tr><td>Entered digits matched exactly</td><td>${yy}</td><td>${ny}</td></tr>
+    <tr><td>Entered digits did not match / not entered</td><td>${yn}</td><td>${nn}</td></tr>
+    </table><p class="small mt">${ny} trial${ny === 1 ? '' : 's'} where you said you couldn't read it but
+    typed the right answer anyway, and ${yn} where you claimed success but the entry was wrong or blank —
+    the second cell is the more informative one if it's large, since it means "could read" is being answered
+    more loosely than the objective score.</p></div>`;
+
+  // ── Session drift ──
+  h += `<div class="rpt-section"><h3>7 · Drift across the session</h3><table>
+    <tr><th>Third</th><th>n</th><th>Subjective read</th><th>Objective</th></tr>`;
+  const third = Math.ceil(real.length / 3) || 1;
+  for (let i = 0; i < 3; i++) {
+    const r = real.slice(i * third, (i + 1) * third);
+    if (!r.length) continue;
+    h += `<tr><td>${['First', 'Middle', 'Last'][i]}</td><td>${r.length}</td>
+      <td>${pct(r.filter(SUB).length / r.length)}</td><td>${pct(r.filter(OBJ).length / r.length)}</td></tr>`;
+  }
+  h += `</table><p class="small mt">A large gap here is general fatigue/practice, not the stimulus — and
+    with a rapid task like this it may show up as improving <em>reading</em> speed rather than a stable
+    legibility rate, so treat a rise here with the same caution as a rise in section 4.</p></div>`;
+
+  h += `<p class="small">Mode: ${SES.mode} · seed ${SES.seed.toString(16).toUpperCase()} ·
+    ${SES.nDigits} digits, ${SES.flashMs} ms flash in a ${SES.probeMs} ms probe ·
+    level ${SES.levelDb} dBFS requested (capped per frequency) · sea ${SES.seaOn ? SES.seaDb + ' dBFS' : 'off'} ·
+    pre-roll ${SES.prerollMinS}–${SES.prerollMaxS} s ·
+    ${real.length} real + ${silent.length} silent ·
+    ${new Date(Date.now() - (performance.now() - SES.startWall)).toLocaleString()}</p>`;
+
+  el('report-body').innerHTML = h;
+}
+
+// ══════════════════════════ EXPORT ══════════════════════════
+function dlFile(name, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+function downloadCSV() {
+  const cols = ['n', 'isBaseline', 'isSham', 'isRecheck', 'repeatIndex', 'freq', 'drift', 'ear',
+                'fnType', 'bandLo', 'bandHi', 'bandWidth',
+                'digits', 'entered', 'subjective', 'exactMatch', 'digitScore', 'earGuess', 'listenMs'];
+  const rows = [cols.join(',')];
+  SES.baseline.concat(SES.trials).forEach(t => {
+    rows.push(cols.map(c => {
+      if (c === 'bandLo') return `"${t.band ? t.band.lo.toFixed(1) : ''}"`;
+      if (c === 'bandHi') return `"${t.band ? t.band.hi.toFixed(1) : ''}"`;
+      if (c === 'bandWidth') return `"${t.band ? t.band.width.toFixed(1) : ''}"`;
+      return `"${t[c] ?? (['isBaseline', 'isSham', 'isRecheck', 'exactMatch'].includes(c) ? false : '')}"`;
+    }).join(','));
+  });
+  dlFile('scds_dva_trials.csv', rows.join('\n'), 'text/csv');
+}
+function downloadJSON() {
+  dlFile('scds_dva_session.json', JSON.stringify({
+    seed: SES.seed, mode: SES.mode,
+    design: { freqList: SES.freqList, perCell: SES.perCell, randMin: SES.randMin, randMax: SES.randMax,
+              randLog: SES.randLog, randTotal: SES.randTotal,
+              aggOuterMin: SES.aggOuterMin, aggOuterMax: SES.aggOuterMax,
+              aggWidthMin: SES.aggWidthMin, aggWidthMax: SES.aggWidthMax, aggTotal: SES.aggTotal,
+              shamFraction: SHAM_FRACTION, baselineTrials: BASELINE_TRIALS },
+    digitTask: { nDigits: SES.nDigits, flashMs: SES.flashMs, probeMs: SES.probeMs,
+                 prerollMinS: SES.prerollMinS, prerollMaxS: SES.prerollMaxS },
+    levelDb: SES.levelDb, sea: { on: SES.seaOn, db: SES.seaDb, hpHz: SEA_HP_HZ },
+    shamMonitoring: { history: SES.shamHistory, recheckCount: SES.shamRecheckCount,
+                      abortPrompts: SES.shamAbortPrompts, stoppedBySham: SES.stoppedBySham },
+    gate: SES.gate, baseline: SES.baseline, trials: SES.trials, log: SES.log
+  }, null, 2), 'application/json');
+}
+</script>
+</body>
+</html>

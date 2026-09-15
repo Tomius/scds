@@ -26,13 +26,28 @@ a.card p { font-size:0.85rem; line-height:1.55; color:var(--muted); }
 <main>
   <h1>SCDS probe tools</h1>
 
-  <a class="card primary" href="scds_2x2x2_iphone.html">
+  <a class="card primary" href="scds_dva_iphone.html">
     <span class="tag tag-now">Current</span>
+    <h2>DVA — legibility under probe</h2>
+    <p>Replaces the symptom rating with a mostly-involuntary readout: a random number flashes for
+      ~0.5 s in the middle of a 1 s probe, scored right/wrong against what you actually type, not
+      just whether you say you could read it. Fixed-list mode reports legibility by repeat number,
+      so habituation to a specific repeated sound shows up as a trend instead of an argument.
+      Random-sweep mode draws a fresh frequency (plus random drift/side) every trial — nothing to
+      repeat, nothing to learn to predict. Aggressive-random mode goes further still: a fresh
+      random-width frequency band plus a randomly chosen sampling function (sweep, triangle,
+      quadratic, random jumps, or several simultaneous tones) every trial, reported as a
+      frequency × band-width legibility heat-map. Editable frequency list, adaptive sham
+      monitoring, pause between trials.</p>
+  </a>
+
+  <a class="card" href="scds_2x2x2_iphone.html">
+    <span class="tag tag-old">Previous</span>
     <h2>2×2×2 — frequency × drift × side</h2>
     <p>20 Hz vs 500 Hz, steady vs aggressively drifting, left vs right, fully crossed, with silent
-      sham trials and a self-paced washout. Tests whether laterality depends on frequency — the
-      bone-conduction prediction — using both the symptom rating and, independently, whether the
-      side can be named at all. No condition is ever shown on screen.</p>
+      sham trials and a self-paced washout. Superseded by the DVA tool above: with the same
+      condition repeated dozens of times, a within-session habituation effect can't be told apart
+      from a real one using a self-reported severity rating.</p>
   </a>
 
   <a class="card" href="scds_threshold_iphone.html">
