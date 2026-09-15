@@ -228,11 +228,22 @@ td { padding: 5px 6px; border-bottom: 1px solid var(--border); }
       <div style="flex:1"><label class="field">Flash duration (ms)</label><input type="number" id="cfg-flashms" value="500" min="100" max="1500" step="50" oninput="updateEstimate()"></div>
     </div>
     <div class="row mt">
-      <div style="flex:1"><label class="field">Probe window (ms)</label><input type="number" id="cfg-probems" value="1000" min="400" max="3000" step="100" oninput="updateEstimate()"></div>
+      <div style="flex:1"><label class="field">Flash delay after probe onset (ms)</label><input type="number" id="cfg-flashdelay" value="700" min="0" max="5000" step="50" oninput="updateEstimate()"></div>
       <div style="flex:1"><label class="field">Digit font size (px)</label><input type="number" id="cfg-fontsize" value="64" min="4" max="140" step="2"></div>
     </div>
-    <p class="small mt">The flash sits centred in the probe window — with the defaults, that's
-      250&nbsp;ms of probe, then a 500&nbsp;ms flash, then 250&nbsp;ms more of probe.</p>
+    <div class="row mt">
+      <div style="flex:1"><label class="field">Tail after flash before tone stops (ms)</label><input type="number" id="cfg-flashtail" value="200" min="0" max="2000" step="50" oninput="updateEstimate()"></div>
+    </div>
+    <p class="small mt" id="timing-summary"></p>
+    <p class="small mt"><strong>This delay is a guess, not a measurement</strong> — if the flash is
+      already gone by the time your vision goes unstable, it's set too short. Use the preview below
+      to feel it out: it loops the tone on/off with a flash at the delay above (plus sea, if
+      enabled) so you can adjust the number live, with no responses or logging, before trusting a
+      real session's numbers.</p>
+    <div class="stage-box mt2" style="min-height:110px">
+      <span id="tp-digit" class="digits-preview"></span>
+    </div>
+    <button class="btn btn-secondary mt" id="btn-preview-timing" style="width:auto;padding:10px 16px" onclick="toggleTimingPreview()">▶ Preview flash timing (loops)</button>
     <div class="row mt2">
       <div style="flex:1"><label class="field">Pre-roll min (s)</label><input type="number" id="cfg-preroll-min" value="1" min="0" max="10" step="0.5"></div>
       <div style="flex:1"><label class="field">Pre-roll max (s)</label><input type="number" id="cfg-preroll-max" value="3" min="0" max="15" step="0.5"></div>
@@ -533,7 +544,7 @@ function blankSession() {
     mode: 'fixed', freqList: [], randMin: 20, randMax: 20000, randLog: true,
     aggOuterMin: 20, aggOuterMax: 20000, aggWidthMin: 1, aggWidthMax: 10000, aggTotal: 40,
     seaOn: true, seaDb: -24, levelDb: -6, driftDepth: DRIFT_DEPTH,
-    nDigits: 3, flashMs: 500, probeMs: 1000, prerollMinS: 1, prerollMaxS: 3,
+    nDigits: 3, flashMs: 500, flashDelayMs: 700, flashTailMs: 200, probeMs: 1400, prerollMinS: 1, prerollMaxS: 3,
     gate: null, shamHistory: [], shamRecheckCount: 0, shamAbortPrompts: 0, stoppedBySham: false,
     repeatCounters: {}
   };
@@ -838,6 +849,74 @@ function stopPreview() {
   const btn = el('btn-preview'); if (btn) btn.textContent = '▶ Preview';
 }
 
+// Loops silence → tone-on → flash → tone-off, reading the delay/flash/tail/font/digit-count
+// fields live on every cycle, so the delay can be tuned by feel while it's actually playing —
+// the whole point being that the right delay is something you find by noticing when the flash
+// does or doesn't land during the unstable part, not something anyone can just assert up front.
+let tpAX = null, tpToken = null, tpOsc = null, tpGain = null, tpSeaEl = null;
+async function toggleTimingPreview() {
+  const btn = el('btn-preview-timing');
+  if (tpToken) { stopTimingPreview(); return; }
+  const myToken = {};
+  tpToken = myToken;
+  btn.textContent = '⏸ Stop preview';
+  try {
+    tpAX = new (window.AudioContext || window.webkitAudioContext)();
+    if (tpAX.state === 'suspended') await tpAX.resume();
+    tpOsc = tpAX.createOscillator(); tpOsc.type = 'sine'; tpOsc.frequency.value = +el('cfg-preview-hz').value || 1000;
+    tpGain = tpAX.createGain(); tpGain.gain.value = 0;
+    tpOsc.connect(tpGain); tpGain.connect(tpAX.destination); tpOsc.start();
+    if (el('cfg-sea').checked) {
+      tpSeaEl = createSeaAudioEl();
+      await withTimeout(tpSeaEl.play(), 2000, 'Sea preview did not start within 2s.');
+      const src = tpAX.createMediaElementSource(tpSeaEl);
+      const hp1 = tpAX.createBiquadFilter(); hp1.type = 'highpass'; hp1.frequency.value = SEA_HP_HZ;
+      const hp2 = tpAX.createBiquadFilter(); hp2.type = 'highpass'; hp2.frequency.value = SEA_HP_HZ;
+      const sg = tpAX.createGain(); sg.gain.value = dbToLin(+el('cfg-seadb').value);
+      src.connect(hp1); hp1.connect(hp2); hp2.connect(sg); sg.connect(tpAX.destination);
+    }
+    while (tpToken === myToken) {
+      await rawSleep(900);
+      if (tpToken !== myToken) break;
+      const freq = +el('cfg-preview-hz').value || 1000;
+      tpOsc.frequency.value = freq;
+      const lin = probeLinFor(freq);
+      let now = tpAX.currentTime;
+      tpGain.gain.cancelScheduledValues(now);
+      tpGain.gain.setTargetAtTime(lin, now, Math.max(0.02, 1 / freq));
+      const delay = +el('cfg-flashdelay').value || 0;
+      const flashMs = +el('cfg-flashms').value || 500;
+      const tail = +el('cfg-flashtail').value || 0;
+      await rawSleep(delay);
+      if (tpToken !== myToken) break;
+      const n = +el('cfg-digits').value || 3;
+      let s = ''; for (let i = 0; i < n; i++) s += Math.floor(Math.random() * 10);
+      el('tp-digit').style.fontSize = (+el('cfg-fontsize').value || 64) + 'px';
+      el('tp-digit').textContent = s;
+      await rawSleep(flashMs);
+      if (tpToken !== myToken) break;
+      el('tp-digit').textContent = '';
+      await rawSleep(tail);
+      if (tpToken !== myToken) break;
+      now = tpAX.currentTime;
+      tpGain.gain.cancelScheduledValues(now);
+      tpGain.gain.setTargetAtTime(0, now, 0.03);
+    }
+  } catch (err) {
+    alert('Timing preview failed: ' + err.message);
+    tpToken = null;
+  }
+  if (tpToken !== myToken) cleanupTimingPreview();
+}
+function stopTimingPreview() { tpToken = null; cleanupTimingPreview(); }
+function cleanupTimingPreview() {
+  el('tp-digit').textContent = '';
+  const btn = el('btn-preview-timing'); if (btn) btn.textContent = '▶ Preview flash timing (loops)';
+  if (tpSeaEl) { try { tpSeaEl.pause(); } catch (e) {} tpSeaEl.remove(); tpSeaEl = null; }
+  if (tpAX) { const ax = tpAX; tpAX = null; setTimeout(() => ax.close().catch(() => {}), 250); }
+  tpOsc = null; tpGain = null;
+}
+
 // ══════════════════════════ CONFIG UI WIRING ══════════════════════════
 function updateLevels() {
   const hr = headroomLin();
@@ -853,9 +932,21 @@ function updateLevels() {
   }
   updateEstimate();
 }
+function probeMsFromConfig() {
+  const delay = +el('cfg-flashdelay').value || 0;
+  const flashMs = +el('cfg-flashms').value || 500;
+  const tail = +el('cfg-flashtail').value || 0;
+  return delay + flashMs + tail;
+}
 function updateEstimate() {
   const mode = currentMode();
-  const probeMs = +el('cfg-probems').value || 1000;
+  const delay = +el('cfg-flashdelay').value || 0;
+  const flashMs = +el('cfg-flashms').value || 500;
+  const tail = +el('cfg-flashtail').value || 0;
+  const probeMs = probeMsFromConfig();
+  const timingEl = el('timing-summary');
+  if (timingEl) timingEl.innerHTML = `<strong>${probeMs}&nbsp;ms total tone per trial:</strong> ` +
+    `${delay}&nbsp;ms of tone, then the ${flashMs}&nbsp;ms flash, then ${tail}&nbsp;ms more of tone before it stops.`;
   const prerollAvgS = ((+el('cfg-preroll-min').value || 1) + (+el('cfg-preroll-max').value || 3)) / 2;
   const perTrialS = prerollAvgS + probeMs / 1000 + 3 + (INTERTRIAL_GAP_MIN_MS + INTERTRIAL_GAP_MAX_MS) / 2000;
   let real;
@@ -987,8 +1078,8 @@ async function runTrial(trial, n, total) {
   await sleep(prerollS * 1000); checkAbort();
 
   const digits = drawDigits(SES.nDigits);
-  const flashMs = Math.min(SES.probeMs - 20, SES.flashMs);
-  const flashDelayMs = Math.max(0, (SES.probeMs - flashMs) / 2);
+  const flashMs = SES.flashMs;
+  const flashDelayMs = SES.flashDelayMs;
 
   const t0 = performance.now();
   let plan = null;
@@ -1009,7 +1100,7 @@ async function runTrial(trial, n, total) {
   el('digit-display').textContent = '';
   el('fix-dot').style.display = 'inline';
 
-  await sleep(Math.max(0, SES.probeMs - flashDelayMs - flashMs)); checkAbort();
+  await sleep(SES.flashTailMs); checkAbort();
   if (!trial.isSham) { if (trial.isAggressive) stopAggressiveProbe(curAggHandle); else stopProbeCur(); }
   await sleep(60); checkAbort();   // let the fade finish before the response tap can be heard as a click
 
@@ -1158,7 +1249,9 @@ async function handleStart() {
   SES.driftDepth = DRIFT_DEPTH;
   SES.nDigits = +el('cfg-digits').value || 3;
   SES.flashMs = +el('cfg-flashms').value || 500;
-  SES.probeMs = +el('cfg-probems').value || 1000;
+  SES.flashDelayMs = +el('cfg-flashdelay').value || 0;
+  SES.flashTailMs = +el('cfg-flashtail').value || 0;
+  SES.probeMs = probeMsFromConfig();
   SES.prerollMinS = +el('cfg-preroll-min').value || 1;
   SES.prerollMaxS = Math.max(SES.prerollMinS, +el('cfg-preroll-max').value || 3);
   el('digit-input').setAttribute('maxlength', SES.nDigits);
@@ -1170,7 +1263,7 @@ async function handleStart() {
     aggOuterMin: SES.aggOuterMin, aggOuterMax: SES.aggOuterMax,
     aggWidthMin: SES.aggWidthMin, aggWidthMax: SES.aggWidthMax, aggTotal: SES.aggTotal,
     seaOn: SES.seaOn, seaDb: SES.seaDb, levelDb: SES.levelDb,
-    nDigits: SES.nDigits, flashMs: SES.flashMs, probeMs: SES.probeMs,
+    nDigits: SES.nDigits, flashMs: SES.flashMs, flashDelayMs: SES.flashDelayMs, flashTailMs: SES.flashTailMs, probeMs: SES.probeMs,
     prerollMinS: SES.prerollMinS, prerollMaxS: SES.prerollMaxS
   });
   try {
@@ -1539,7 +1632,7 @@ function buildReport() {
     legibility rate, so treat a rise here with the same caution as a rise in section 4.</p></div>`;
 
   h += `<p class="small">Mode: ${SES.mode} · seed ${SES.seed.toString(16).toUpperCase()} ·
-    ${SES.nDigits} digits, ${SES.flashMs} ms flash in a ${SES.probeMs} ms probe ·
+    ${SES.nDigits} digits, flash at +${SES.flashDelayMs} ms for ${SES.flashMs} ms in a ${SES.probeMs} ms probe ·
     level ${SES.levelDb} dBFS requested (capped per frequency) · sea ${SES.seaOn ? SES.seaDb + ' dBFS' : 'off'} ·
     pre-roll ${SES.prerollMinS}–${SES.prerollMaxS} s ·
     ${real.length} real + ${silent.length} silent ·
@@ -1579,7 +1672,7 @@ function downloadJSON() {
               aggOuterMin: SES.aggOuterMin, aggOuterMax: SES.aggOuterMax,
               aggWidthMin: SES.aggWidthMin, aggWidthMax: SES.aggWidthMax, aggTotal: SES.aggTotal,
               shamFraction: SHAM_FRACTION, baselineTrials: BASELINE_TRIALS },
-    digitTask: { nDigits: SES.nDigits, flashMs: SES.flashMs, probeMs: SES.probeMs,
+    digitTask: { nDigits: SES.nDigits, flashMs: SES.flashMs, flashDelayMs: SES.flashDelayMs, flashTailMs: SES.flashTailMs, probeMs: SES.probeMs,
                  prerollMinS: SES.prerollMinS, prerollMaxS: SES.prerollMaxS },
     levelDb: SES.levelDb, sea: { on: SES.seaOn, db: SES.seaDb, hpHz: SEA_HP_HZ },
     shamMonitoring: { history: SES.shamHistory, recheckCount: SES.shamRecheckCount,
