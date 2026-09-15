@@ -229,7 +229,7 @@ td { padding: 5px 6px; border-bottom: 1px solid var(--border); }
     </div>
     <div class="row mt">
       <div style="flex:1"><label class="field">Probe window (ms)</label><input type="number" id="cfg-probems" value="1000" min="400" max="3000" step="100" oninput="updateEstimate()"></div>
-      <div style="flex:1"><label class="field">Digit font size (px)</label><input type="number" id="cfg-fontsize" value="64" min="28" max="140" step="4"></div>
+      <div style="flex:1"><label class="field">Digit font size (px)</label><input type="number" id="cfg-fontsize" value="64" min="4" max="140" step="2"></div>
     </div>
     <p class="small mt">The flash sits centred in the probe window — with the defaults, that's
       250&nbsp;ms of probe, then a 500&nbsp;ms flash, then 250&nbsp;ms more of probe.</p>
@@ -292,9 +292,9 @@ td { padding: 5px 6px; border-bottom: 1px solid var(--border); }
     <span id="calib-digit" class="digits-preview"></span>
   </div>
   <div class="row" style="justify-content:center;gap:18px">
-    <button class="btn btn-secondary" style="width:auto;padding:14px 22px;font-size:1.3rem" onclick="calibAdjust(-8)">A−</button>
+    <button class="btn btn-secondary" style="width:auto;padding:14px 22px;font-size:1.3rem" onclick="calibAdjust(-1)">A−</button>
     <span id="calib-size-lbl" class="mono" style="font-size:1.05rem;min-width:60px;text-align:center"></span>
-    <button class="btn btn-secondary" style="width:auto;padding:14px 22px;font-size:1.3rem" onclick="calibAdjust(8)">A+</button>
+    <button class="btn btn-secondary" style="width:auto;padding:14px 22px;font-size:1.3rem" onclick="calibAdjust(1)">A+</button>
   </div>
   <button class="btn btn-primary" onclick="finishCalibration()">Continue with this size ▶</button>
 </div>
@@ -1216,7 +1216,12 @@ function updateCalibLabel() {
   el('calib-size-lbl').textContent = calibSize + 'px';
   el('calib-digit').style.fontSize = calibSize + 'px';
 }
-function calibAdjust(delta) { calibSize = Math.max(16, Math.min(220, calibSize + delta)); updateCalibLabel(); }
+// Proportional step (~15% of current size, min 1px) rather than a fixed px delta: a fixed step of
+// 8px is fine coming down from 64px but useless for finding a threshold that turns out to be
+// single-digit px — this way the step shrinks along with the size, so it stays controllable all
+// the way down to a couple of px.
+function calibStep() { return Math.max(1, Math.round(calibSize * 0.15)); }
+function calibAdjust(dir) { calibSize = Math.max(4, Math.min(220, calibSize + dir * calibStep())); updateCalibLabel(); }
 function rawSleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 async function runCalibFlashLoop() {
   const myToken = {};
