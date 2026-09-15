@@ -63,15 +63,20 @@ hr { border: none; border-top: 1px solid var(--border); margin: 6px 0; }
   background: var(--surface); border: 2px solid var(--border); border-radius: 10px;
 }
 #fix-dot { font-size: 1.6rem; color: var(--muted); }
+/* Code-editor monospace stack: these fonts draw digits with the kind of unambiguous, tall,
+   open-counter shapes source-code editors favour, rather than a generic system monospace. Menlo
+   is Xcode/Terminal's default on iOS/macOS, so on the iPhone this is targeted for, that's what
+   actually renders. */
+:root { --digit-font: 'Cascadia Code', 'Cascadia Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, 'SF Mono', 'Source Code Pro', monospace; }
 #digit-display {
-  font-family: monospace; font-weight: 700; letter-spacing: 0.15em; color: var(--text);
+  font-family: var(--digit-font); font-weight: 700; letter-spacing: 0.15em; color: var(--text);
   display: none;
 }
-.digits-preview { font-family: monospace; font-weight: 700; letter-spacing: 0.15em; color: var(--text); }
+.digits-preview { font-family: var(--digit-font); font-weight: 700; letter-spacing: 0.15em; color: var(--text); }
 .pause-line { text-align: center; font-size: 0.85rem; color: var(--warn); min-height: 18px; }
 
 #resp-area { display: none; }
-.digit-entry { font-family: monospace; font-size: 1.5rem; text-align: center; letter-spacing: 0.25em; padding: 12px; }
+input.digit-entry { font-family: var(--digit-font); font-size: 1.5rem; text-align: center; letter-spacing: 0.25em; padding: 12px; }
 .resp-col { display: flex; flex-direction: column; gap: 10px; }
 .resp-btn {
   padding: 16px 14px; font-size: 0.94rem; font-weight: 600; border: 1px solid var(--border);
@@ -81,6 +86,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 6px 0; }
 .resp-btn:disabled { opacity: .3; }
 .resp-yes { border-left-color: var(--accent); }
 .resp-no { border-left-color: var(--danger); }
+.resp-missed { border-left-color: var(--muted); }
 
 .ov { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 600; align-items: center; justify-content: center; }
 .ov.vis { display: flex; }
@@ -324,6 +330,7 @@ td { padding: 5px 6px; border-bottom: 1px solid var(--border); }
     <div class="resp-col mt2">
       <button class="resp-btn resp-yes" id="resp-yes" data-val="yes">✓ I could read it</button>
       <button class="resp-btn resp-no" id="resp-no" data-val="no">✗ Could not read it</button>
+      <button class="resp-btn resp-missed" id="resp-missed" data-val="missed">◌ I missed the flash — didn't see it at all</button>
     </div>
   </div>
 </div>
@@ -377,6 +384,11 @@ td { padding: 5px 6px; border-bottom: 1px solid var(--border); }
 const DRIFTS = ['steady', 'drift'];
 const EARS   = ['left', 'right'];
 const DEFAULT_FREQ_LIST = [20, 60, 125, 250, 500, 1000, 4000];
+// 0 and 8 excluded: their closed vertical loops are reportedly more robust to (or ambiguous under)
+// vertical blur than the other digits, which would bias legibility upward for reasons unrelated to
+// the probe.
+const DIGIT_POOL = ['1', '2', '3', '4', '5', '6', '7', '9'];
+function randDigitChar(rng) { return DIGIT_POOL[Math.floor((rng ? rng() : Math.random()) * DIGIT_POOL.length)]; }
 
 let DRIFT_DEPTH = 0.40;
 const DRIFT_SEG_MIN_S = 0.15, DRIFT_SEG_MAX_S = 0.35;   // shorter segments to fit inside a ~1s window
@@ -890,7 +902,7 @@ async function toggleTimingPreview() {
       await rawSleep(delay);
       if (tpToken !== myToken) break;
       const n = +el('cfg-digits').value || 3;
-      let s = ''; for (let i = 0; i < n; i++) s += Math.floor(Math.random() * 10);
+      let s = ''; for (let i = 0; i < n; i++) s += randDigitChar();
       el('tp-digit').style.fontSize = (+el('cfg-fontsize').value || 64) + 'px';
       el('tp-digit').textContent = s;
       await rawSleep(flashMs);
@@ -985,7 +997,7 @@ function drawRandomFreq() {
 }
 function drawDigits(n) {
   let s = '';
-  for (let i = 0; i < n; i++) s += Math.floor(SES.prng() * 10);
+  for (let i = 0; i < n; i++) s += randDigitChar(SES.prng);
   return s;
 }
 function fmtHz(v) { return v >= 1000 ? (Math.round(v / 100) / 10) + 'k' : Math.round(v).toString(); }
@@ -1106,7 +1118,7 @@ async function runTrial(trial, n, total) {
 
   el('resp-area').style.display = 'block';
   el('digit-input').value = '';
-  const resp = await waitForChoice(['resp-yes', 'resp-no']);
+  const resp = await waitForChoice(['resp-yes', 'resp-no', 'resp-missed']);
   checkAbort();
   const entered = el('digit-input').value.trim();
   el('resp-area').style.display = 'none';
@@ -1324,7 +1336,7 @@ async function runCalibFlashLoop() {
     await rawSleep(900);
     if (calibToken !== myToken) break;
     const n = +el('cfg-digits').value || 3;
-    let s = ''; for (let i = 0; i < n; i++) s += Math.floor(Math.random() * 10);
+    let s = ''; for (let i = 0; i < n; i++) s += randDigitChar();
     el('calib-digit').textContent = s;
     await rawSleep(+el('cfg-flashms').value || 500);
     if (calibToken !== myToken) break;
@@ -1375,6 +1387,24 @@ function pFmt(p) { return p == null ? '—' : p < 0.001 ? '<0.001' : p.toFixed(3
 // ══════════════════════════ REPORT ══════════════════════════
 const SUB = t => t.subjective === 'yes';
 const OBJ = t => t.exactMatch;
+const MISSED = t => t.subjective === 'missed';
+// "Missed" (never saw a flash at all — eyes shut, mid-blink, looking away) is a different failure
+// mode from "saw it but couldn't read it," and conflating them would inflate illegibility for
+// reasons that have nothing to do with the probe. Every legibility rate below is computed over
+// trials where a flash was actually seen; missed trials are reported as their own rate instead.
+function legStats(rows) {
+  const seen = rows.filter(t => !MISSED(t));
+  const missedN = rows.length - seen.length;
+  const k = seen.filter(SUB).length;
+  const ci = wilsonCI(k, seen.length);
+  const objN = seen.filter(OBJ).length;
+  return {
+    n: rows.length, seen, seenN: seen.length, missedN,
+    missedPct: rows.length ? missedN / rows.length : null,
+    subK: k, subP: ci.p, subLo: ci.lo, subHi: ci.hi,
+    objP: seen.length ? objN / seen.length : null
+  };
+}
 
 // Green = legible, red = illegible, used as a stand-in for "symptomatic" since this tool measures
 // legibility rather than a severity rating.
@@ -1398,9 +1428,11 @@ function buildAggressiveHeatmap(real) {
     h += `<tr><th>${wb.label}</th>`;
     centerBins.forEach(cb => {
       const rows = real.filter(t => t.band && t.band.width >= wb.lo && t.band.width < wb.hi && t.band.center >= cb.lo && t.band.center < cb.hi);
-      if (!rows.length) { h += `<td style="background:${heatColor(null)};text-align:center">—</td>`; return; }
-      const rate = rows.filter(t => !SUB(t)).length / rows.length;
-      h += `<td style="background:${heatColor(rate)};color:#fff;text-align:center;padding:4px 3px">${pct(rate)}<br><span style="opacity:.65">n=${rows.length}</span></td>`;
+      const seen = rows.filter(t => !MISSED(t));
+      if (!seen.length) { h += `<td style="background:${heatColor(null)};text-align:center">—</td>`; return; }
+      const rate = seen.filter(t => !SUB(t)).length / seen.length;
+      const missedTag = rows.length > seen.length ? `<br><span style="opacity:.5">(${rows.length - seen.length} missed)</span>` : '';
+      h += `<td style="background:${heatColor(rate)};color:#fff;text-align:center;padding:4px 3px">${pct(rate)}<br><span style="opacity:.65">n=${seen.length}</span>${missedTag}</td>`;
     });
     h += `</tr>`;
   });
@@ -1417,34 +1449,38 @@ function buildReport() {
   let h = '';
 
   // ── Validity verdict ──────────────────────────────────────────────
-  const kSubSil = silent.filter(SUB).length;
-  const subRateSil = silent.length ? kSubSil / silent.length : null;
-  const sc = wilsonCI(kSubSil, silent.length);
+  const silStats = legStats(silent);
+  const subRateSil = silStats.subP;
   let vc, vt;
   if (!real.length) { vc = 'v-bad'; vt = 'No real trials were completed — nothing to report.'; }
-  else if (!silent.length) { vc = 'v-bad'; vt = 'No silent trials ran, so there is no floor to judge legibility against.'; }
+  else if (!silStats.seenN) { vc = 'v-bad'; vt = 'No silent trials with a seen flash ran, so there is no floor to judge legibility against.'; }
   else if (subRateSil <= 0.5) {
     vc = 'v-bad';
-    vt = `<strong>Treat this session as unusable.</strong> Only ${pct(subRateSil)} of silent trials (${kSubSil}/${silent.length}) were read even with nothing playing — the task itself was too hard or attention had lapsed for most of the session, so a legibility drop on a real trial can't be told apart from that.`;
+    vt = `<strong>Treat this session as unusable.</strong> Only ${pct(subRateSil)} of silent trials where the flash was seen (${silStats.subK}/${silStats.seenN}) were read even with nothing playing — the task itself was too hard or attention had lapsed for most of the session, so a legibility drop on a real trial can't be told apart from that.`;
   } else if (subRateSil <= 0.8) {
     vc = 'v-warn';
-    vt = `<strong>Interpret with care.</strong> ${pct(subRateSil)} (${kSubSil}/${silent.length}) of silent trials were read. Real effects need to clear this floor, not just beat 0%.`;
+    vt = `<strong>Interpret with care.</strong> ${pct(subRateSil)} (${silStats.subK}/${silStats.seenN}) of silent trials with a seen flash were read. Real effects need to clear this floor, not just beat 0%.`;
   } else {
     vc = 'v-ok';
-    vt = `<strong>Usable session.</strong> ${pct(subRateSil)} (${kSubSil}/${silent.length}) of silent trials were read — a solid floor for real trials to be compared against.`;
+    vt = `<strong>Usable session.</strong> ${pct(subRateSil)} (${silStats.subK}/${silStats.seenN}) of silent trials with a seen flash were read — a solid floor for real trials to be compared against.`;
   }
+  if (silStats.missedN) vt += ` <span class="w">${silStats.missedN}/${silStats.n} silent trials (${pct(silStats.missedPct)}) were missed entirely (no flash seen) and excluded from that rate.</span>`;
   if (SES.gate === 'continued') vt += ` <span class="w">You chose to continue past a flagged opening baseline.</span>`;
   h += `<div class="verdict ${vc}">${vt}</div>`;
 
   // ── Sham/baseline floor detail ─────────────────────────────────────
   h += `<div class="rpt-section"><h3>1 · Silent-trial floor</h3><table>
-    <tr><th>Group</th><th>n</th><th>Subjective read</th><th>Objective exact match</th><th>Mean digits correct</th></tr>`;
+    <tr><th>Group</th><th>n</th><th>Missed</th><th>Subjective read</th><th>Objective exact match</th><th>Mean digits correct</th></tr>`;
   for (const [nm, r] of [['Opening baseline', base], ['Interspersed sham', sham], ['All silent', silent]]) {
-    const meanD = r.length ? r.reduce((a, t) => a + (t.digitScore || 0), 0) / r.length : null;
-    h += `<tr><td>${nm}</td><td>${r.length}</td><td>${pct(r.length ? r.filter(SUB).length / r.length : null)}</td>
-      <td>${pct(r.length ? r.filter(OBJ).length / r.length : null)}</td><td>${meanD == null ? '—' : meanD.toFixed(2)} / ${SES.nDigits}</td></tr>`;
+    const st = legStats(r);
+    const meanD = st.seenN ? st.seen.reduce((a, t) => a + (t.digitScore || 0), 0) / st.seenN : null;
+    h += `<tr><td>${nm}</td><td>${r.length}</td><td>${st.missedN ? `${st.missedN} (${pct(st.missedPct)})` : '0'}</td>
+      <td>${pct(st.subP)}</td><td>${pct(st.objP)}</td><td>${meanD == null ? '—' : meanD.toFixed(2)} / ${SES.nDigits}</td></tr>`;
   }
-  h += `</table><p class="small mt">Every rate below should be read against the "all silent" line.
+  h += `</table><p class="small mt">Missed trials (flash never seen — a blink, a glance away, or a
+    baseline-vision problem, not a legibility failure) are shown separately and excluded from every
+    subjective/objective rate elsewhere in this report. Every legibility rate below should be read
+    against the "all silent" line.
     ${SES.shamRecheckCount ? `${SES.shamRecheckCount} extra sham${SES.shamRecheckCount === 1 ? '' : 's'} inserted mid-session after a single failed sham. ` : ''}
     ${SES.shamAbortPrompts ? `${SES.shamAbortPrompts} prompt${SES.shamAbortPrompts === 1 ? '' : 's'} shown for two failed shams in a row` +
       (SES.stoppedBySham ? ', and the session was <strong>stopped early</strong> — everything below reflects only the trials completed before then.' : ', and you chose to continue each time.') : ''}
@@ -1453,12 +1489,13 @@ function buildReport() {
   if (SES.mode === 'fixed') {
     // ── Per-condition table ──
     h += `<div class="rpt-section"><h3>2 · Legibility by condition</h3><table>
-      <tr><th>Freq</th><th>Drift</th><th>Side</th><th>n</th><th>Subjective</th><th>Objective</th></tr>`;
+      <tr><th>Freq</th><th>Drift</th><th>Side</th><th>n</th><th>Missed</th><th>Subjective</th><th>Objective</th></tr>`;
     SES.freqList.forEach(f => DRIFTS.forEach(d => EARS.forEach(e => {
       const rows = real.filter(t => t.freq === f && t.drift === d && t.ear === e);
       if (!rows.length) return;
-      h += `<tr><td>${f} Hz</td><td>${d}</td><td>${e}</td><td>${rows.length}</td>
-        <td>${pct(rows.filter(SUB).length / rows.length)}</td><td>${pct(rows.filter(OBJ).length / rows.length)}</td></tr>`;
+      const st = legStats(rows);
+      h += `<tr><td>${f} Hz</td><td>${d}</td><td>${e}</td><td>${rows.length}</td><td>${st.missedN || 0}</td>
+        <td>${pct(st.subP)}</td><td>${pct(st.objP)}</td></tr>`;
     })));
     h += `</table></div>`;
 
@@ -1467,13 +1504,14 @@ function buildReport() {
       <tr><th>Freq</th><th>Left</th><th>Right</th><th>L−R</th><th>95% CI</th><th>Fisher p</th></tr>`;
     SES.freqList.forEach(f => {
       const L = real.filter(t => t.freq === f && t.ear === 'left'), R = real.filter(t => t.freq === f && t.ear === 'right');
-      const kl = L.filter(SUB).length, kr = R.filter(SUB).length;
-      const dd = newcombeDiff(kl, L.length, kr, R.length);
-      h += `<tr><td>${f} Hz</td><td>${kl}/${L.length} (${pct(L.length ? kl / L.length : null)})</td>
-        <td>${kr}/${R.length} (${pct(R.length ? kr / R.length : null)})</td>
+      const stL = legStats(L), stR = legStats(R);
+      const kl = stL.subK, kr = stR.subK, nl = stL.seenN, nr = stR.seenN;
+      const dd = newcombeDiff(kl, nl, kr, nr);
+      h += `<tr><td>${f} Hz</td><td>${kl}/${nl} (${pct(nl ? kl / nl : null)})</td>
+        <td>${kr}/${nr} (${pct(nr ? kr / nr : null)})</td>
         <td>${dd.d == null ? '—' : sgn(dd.d) + ' pts'}</td>
         <td>${dd.d == null ? '—' : `${sgn(dd.lo)} to ${sgn(dd.hi)}`}</td>
-        <td>${pFmt(fisherExact(kl, L.length - kl, kr, R.length - kr))}</td></tr>`;
+        <td>${pFmt(fisherExact(kl, nl - kl, kr, nr - kr))}</td></tr>`;
     });
     h += `</table></div>`;
 
@@ -1483,13 +1521,14 @@ function buildReport() {
       <p class="small">Pooled across every condition, grouped by how many times you had already heard that
       exact frequency+drift+side combination when this trial played. A rising trend here is the direct
       signature of learning to discount a specific, repeated stimulus.</p>
-      <table><tr><th>Repeat #</th><th>n</th><th>Subjective</th><th>Objective</th><th>Mean digits</th></tr>`;
+      <table><tr><th>Repeat #</th><th>n</th><th>Missed</th><th>Subjective</th><th>Objective</th><th>Mean digits</th></tr>`;
     for (let r = 1; r <= maxRep; r++) {
       const rows = real.filter(t => t.repeatIndex === r);
       if (!rows.length) continue;
-      const meanD = rows.reduce((a, t) => a + (t.digitScore || 0), 0) / rows.length;
-      h += `<tr><td>${r}</td><td>${rows.length}</td><td>${pct(rows.filter(SUB).length / rows.length)}</td>
-        <td>${pct(rows.filter(OBJ).length / rows.length)}</td><td>${meanD.toFixed(2)}</td></tr>`;
+      const st = legStats(rows);
+      const meanD = st.seenN ? st.seen.reduce((a, t) => a + (t.digitScore || 0), 0) / st.seenN : null;
+      h += `<tr><td>${r}</td><td>${rows.length}</td><td>${st.missedN || 0}</td><td>${pct(st.subP)}</td>
+        <td>${pct(st.objP)}</td><td>${meanD == null ? '—' : meanD.toFixed(2)}</td></tr>`;
     }
     h += `</table>`;
 
@@ -1502,19 +1541,21 @@ function buildReport() {
       const mid = Math.ceil(arr.length / 2);
       firstHalf.push(...arr.slice(0, mid)); laterHalf.push(...arr.slice(mid));
     });
-    const kf = firstHalf.filter(SUB).length, kl2 = laterHalf.filter(SUB).length;
-    const dd2 = newcombeDiff(kl2, laterHalf.length, kf, firstHalf.length);
-    h += `<p class="small mt"><strong>First exposure to each condition:</strong> ${kf}/${firstHalf.length} (${pct(firstHalf.length ? kf / firstHalf.length : null)}) read.
-      <strong>Later exposures to the same condition:</strong> ${kl2}/${laterHalf.length} (${pct(laterHalf.length ? kl2 / laterHalf.length : null)}) read.
+    const stFirst = legStats(firstHalf), stLater = legStats(laterHalf);
+    const kf = stFirst.subK, kl2 = stLater.subK;
+    const dd2 = newcombeDiff(kl2, stLater.seenN, kf, stFirst.seenN);
+    h += `<p class="small mt"><strong>First exposure to each condition:</strong> ${kf}/${stFirst.seenN} (${pct(stFirst.subP)}) read.
+      <strong>Later exposures to the same condition:</strong> ${kl2}/${stLater.seenN} (${pct(stLater.subP)}) read.
       Difference (later − first): ${dd2.d == null ? '—' : sgn(dd2.d) + ' pts'} ${dd2.d == null ? '' : `(95% CI ${sgn(dd2.lo)} to ${sgn(dd2.hi)})`}.
       A positive, CI-excluding-zero gap here is direct evidence for habituation to specific, repeated stimuli.
       Compare it against the random-sweep arm — which by construction never repeats a stimulus — run on a
       different day with the same hardware.</p>
 
-      <table class="mt"><tr><th>Drift arm</th><th>Exposure</th><th>n</th><th>Subjective read</th></tr>`;
+      <table class="mt"><tr><th>Drift arm</th><th>Exposure</th><th>n</th><th>Missed</th><th>Subjective read</th></tr>`;
     ['steady', 'drift'].forEach(dr => ['first', 'later'].forEach(when => {
       const rows = (when === 'first' ? firstHalf : laterHalf).filter(t => t.drift === dr);
-      h += `<tr><td>${dr}</td><td>${when}</td><td>${rows.length}</td><td>${pct(rows.length ? rows.filter(SUB).length / rows.length : null)}</td></tr>`;
+      const st = legStats(rows);
+      h += `<tr><td>${dr}</td><td>${when}</td><td>${rows.length}</td><td>${st.missedN || 0}</td><td>${pct(st.subP)}</td></tr>`;
     }));
     h += `</table><p class="small mt">If the steady/drift gap is large on first exposure and shrinks on later
       exposures, that is the specific version of the habituation hypothesis: not "you adapt to sound" in
@@ -1530,26 +1571,25 @@ function buildReport() {
       fixed-list session's "first exposure" numbers (section 4 there) run on the same hardware.</p></div>`;
 
     h += `<div class="rpt-section"><h3>3 · Legibility by frequency band</h3><table>
-      <tr><th>Band</th><th>n</th><th>Subjective</th><th>95% CI</th><th>Objective</th></tr>`;
+      <tr><th>Band</th><th>n</th><th>Missed</th><th>Subjective</th><th>95% CI</th><th>Objective</th></tr>`;
     octaveBins(SES.randMin, SES.randMax).forEach(b => {
       const rows = real.filter(t => t.freq >= b.lo && t.freq < b.hi);
       if (!rows.length) return;
-      const ks = rows.filter(SUB).length, c = wilsonCI(ks, rows.length);
-      h += `<tr><td>${b.label}</td><td>${rows.length}</td><td>${pct(c.p)}</td>
-        <td>${c.p == null ? '—' : `${pct(c.lo)}–${pct(c.hi)}`}</td>
-        <td>${pct(rows.length ? rows.filter(OBJ).length / rows.length : null)}</td></tr>`;
+      const st = legStats(rows);
+      h += `<tr><td>${b.label}</td><td>${rows.length}</td><td>${st.missedN || 0}</td><td>${pct(st.subP)}</td>
+        <td>${st.subP == null ? '—' : `${pct(st.subLo)}–${pct(st.subHi)}`}</td>
+        <td>${pct(st.objP)}</td></tr>`;
     });
     h += `</table></div>`;
 
     h += `<div class="rpt-section"><h3>4 · Drift and side, pooled across the spectrum</h3><table>
-      <tr><th>Factor</th><th>Level</th><th>n</th><th>Subjective read</th><th>95% CI</th></tr>`;
-    DRIFTS.forEach(dr => { const rows = real.filter(t => t.drift === dr); const k = rows.filter(SUB).length; const c = wilsonCI(k, rows.length);
-      h += `<tr><td>Drift</td><td>${dr}</td><td>${rows.length}</td><td>${pct(c.p)}</td><td>${c.p == null ? '—' : `${pct(c.lo)}–${pct(c.hi)}`}</td></tr>`; });
-    EARS.forEach(e => { const rows = real.filter(t => t.ear === e); const k = rows.filter(SUB).length; const c = wilsonCI(k, rows.length);
-      h += `<tr><td>Side</td><td>${e}</td><td>${rows.length}</td><td>${pct(c.p)}</td><td>${c.p == null ? '—' : `${pct(c.lo)}–${pct(c.hi)}`}</td></tr>`; });
-    const S0 = real.filter(t => t.drift === 'steady'), D0 = real.filter(t => t.drift === 'drift');
-    const ks0 = S0.filter(SUB).length, kd0 = D0.filter(SUB).length;
-    h += `</table><p class="small mt">Drift−steady Fisher p = ${pFmt(fisherExact(kd0, D0.length - kd0, ks0, S0.length - ks0))}.</p></div>`;
+      <tr><th>Factor</th><th>Level</th><th>n</th><th>Missed</th><th>Subjective read</th><th>95% CI</th></tr>`;
+    DRIFTS.forEach(dr => { const rows = real.filter(t => t.drift === dr); const st = legStats(rows);
+      h += `<tr><td>Drift</td><td>${dr}</td><td>${rows.length}</td><td>${st.missedN || 0}</td><td>${pct(st.subP)}</td><td>${st.subP == null ? '—' : `${pct(st.subLo)}–${pct(st.subHi)}`}</td></tr>`; });
+    EARS.forEach(e => { const rows = real.filter(t => t.ear === e); const st = legStats(rows);
+      h += `<tr><td>Side</td><td>${e}</td><td>${rows.length}</td><td>${st.missedN || 0}</td><td>${pct(st.subP)}</td><td>${st.subP == null ? '—' : `${pct(st.subLo)}–${pct(st.subHi)}`}</td></tr>`; });
+    const S0 = legStats(real.filter(t => t.drift === 'steady')), D0 = legStats(real.filter(t => t.drift === 'drift'));
+    h += `</table><p class="small mt">Drift−steady Fisher p = ${pFmt(fisherExact(D0.subK, D0.seenN - D0.subK, S0.subK, S0.seenN - S0.subK))}.</p></div>`;
 
   } else {
     // ── AGGRESSIVE-RANDOM MODE ──
@@ -1562,21 +1602,21 @@ function buildReport() {
     h += buildAggressiveHeatmap(real);
 
     h += `<div class="rpt-section"><h3>3 · Legibility by sampling function</h3><table>
-      <tr><th>Function</th><th>n</th><th>Subjective</th><th>95% CI</th><th>Objective</th></tr>`;
+      <tr><th>Function</th><th>n</th><th>Missed</th><th>Subjective</th><th>95% CI</th><th>Objective</th></tr>`;
     AGG_FN_TYPES.forEach(fn => {
       const rows = real.filter(t => t.fnType === fn);
       if (!rows.length) return;
-      const k = rows.filter(SUB).length, c = wilsonCI(k, rows.length);
-      h += `<tr><td>${fn}</td><td>${rows.length}</td><td>${pct(c.p)}</td>
-        <td>${c.p == null ? '—' : `${pct(c.lo)}–${pct(c.hi)}`}</td>
-        <td>${pct(rows.length ? rows.filter(OBJ).length / rows.length : null)}</td></tr>`;
+      const st = legStats(rows);
+      h += `<tr><td>${fn}</td><td>${rows.length}</td><td>${st.missedN || 0}</td><td>${pct(st.subP)}</td>
+        <td>${st.subP == null ? '—' : `${pct(st.subLo)}–${pct(st.subHi)}`}</td>
+        <td>${pct(st.objP)}</td></tr>`;
     });
     h += `</table></div>`;
 
     h += `<div class="rpt-section"><h3>4 · Side, pooled across bands and functions</h3><table>
-      <tr><th>Side</th><th>n</th><th>Subjective read</th><th>95% CI</th></tr>`;
-    EARS.forEach(e => { const rows = real.filter(t => t.ear === e); const k = rows.filter(SUB).length; const c = wilsonCI(k, rows.length);
-      h += `<tr><td>${e}</td><td>${rows.length}</td><td>${pct(c.p)}</td><td>${c.p == null ? '—' : `${pct(c.lo)}–${pct(c.hi)}`}</td></tr>`; });
+      <tr><th>Side</th><th>n</th><th>Missed</th><th>Subjective read</th><th>95% CI</th></tr>`;
+    EARS.forEach(e => { const rows = real.filter(t => t.ear === e); const st = legStats(rows);
+      h += `<tr><td>${e}</td><td>${rows.length}</td><td>${st.missedN || 0}</td><td>${pct(st.subP)}</td><td>${st.subP == null ? '—' : `${pct(st.subLo)}–${pct(st.subHi)}`}</td></tr>`; });
     h += `</table></div>`;
   }
 
@@ -1603,7 +1643,8 @@ function buildReport() {
     <td colspan="3">no correct answer — named a side anyway on ${silCom.length}</td></tr>
     </table></div>`;
 
-  // ── Subjective vs objective agreement ──
+  // ── Subjective vs objective agreement (missed trials excluded — "missed" isn't a read/no-read claim) ──
+  const missedReal = real.filter(MISSED).length;
   const yy = real.filter(t => t.subjective === 'yes' && t.exactMatch).length;
   const yn = real.filter(t => t.subjective === 'yes' && !t.exactMatch).length;
   const ny = real.filter(t => t.subjective === 'no' && t.exactMatch).length;
@@ -1615,17 +1656,19 @@ function buildReport() {
     </table><p class="small mt">${ny} trial${ny === 1 ? '' : 's'} where you said you couldn't read it but
     typed the right answer anyway, and ${yn} where you claimed success but the entry was wrong or blank —
     the second cell is the more informative one if it's large, since it means "could read" is being answered
-    more loosely than the objective score.</p></div>`;
+    more loosely than the objective score. ${missedReal} real trial${missedReal === 1 ? '' : 's'} where the
+    flash was missed entirely ${missedReal === 1 ? 'is' : 'are'} excluded from this table.</p></div>`;
 
   // ── Session drift ──
   h += `<div class="rpt-section"><h3>7 · Drift across the session</h3><table>
-    <tr><th>Third</th><th>n</th><th>Subjective read</th><th>Objective</th></tr>`;
+    <tr><th>Third</th><th>n</th><th>Missed</th><th>Subjective read</th><th>Objective</th></tr>`;
   const third = Math.ceil(real.length / 3) || 1;
   for (let i = 0; i < 3; i++) {
     const r = real.slice(i * third, (i + 1) * third);
     if (!r.length) continue;
-    h += `<tr><td>${['First', 'Middle', 'Last'][i]}</td><td>${r.length}</td>
-      <td>${pct(r.filter(SUB).length / r.length)}</td><td>${pct(r.filter(OBJ).length / r.length)}</td></tr>`;
+    const st = legStats(r);
+    h += `<tr><td>${['First', 'Middle', 'Last'][i]}</td><td>${r.length}</td><td>${st.missedN || 0}</td>
+      <td>${pct(st.subP)}</td><td>${pct(st.objP)}</td></tr>`;
   }
   h += `</table><p class="small mt">A large gap here is general fatigue/practice, not the stimulus — and
     with a rapid task like this it may show up as improving <em>reading</em> speed rather than a stable
